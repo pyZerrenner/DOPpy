@@ -46,3 +46,11 @@ For both methods `channel` can be an integer or a list of integers. They raise a
 ## Notes / Known bugs
 - 2D/3D-component measurements are currently not supported.
 - Very old DOP2000 file versions might not be read correctly. The script was tested with file version `'BINWDOPV4.06.1'` .
+
+## Changelog
+v2.01:
+- Removed aliasing from echo-profile.
+- Added `maxtimes` argument to `DOPBase.contour` to avoid RAM overflow.
+
+v2.00:
+- Initial "release"
