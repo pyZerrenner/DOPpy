@@ -11,9 +11,10 @@ DOPpy was written in Python 3.6 but should be compatible with Python 2.7. Requir
 ## Usage
 This section is a quick overview of the features of DOPpy. For more information refer to the doc-strings of the respective functions.
 
-Call the function `DOP(fname)` with the absolute or relative path to the BDD-file `fname`. The function determines which version (DOP2000 or 3000) the file is and returns a `DOP2000` or `DOP3000` instance, respectively.
+Put the file `DOPpy.py` somwhere Python can find it (e.g. the folder of your script or a folder listed in the PATH veriable). Call the function `DOP(fname)` from the module with the absolute or relative path to the BDD-file `fname`. The function determines which version (DOP2000 or 3000) the file is and returns a `DOP2000` or `DOP3000` instance, respectively.
 
 ```python
+import DOP from DOPpy
 bdd = DOP('path/to/file.bdd')
 ```
 
