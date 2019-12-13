@@ -18,7 +18,7 @@ bdd = DOP(fname)
 ```
 
 ### Getting Parameters & Data
-These classes have all available informations from the read file stored. They are subclasses of `DOPBase`. Every parameter of the file can be retrieved either by using the method `bdd.getParam(param)` or by treating the instance as a dictionary `bdd[param]`, where `param` is a string with the name of the parameter. All available parameters can be retrieved with the `bdd.keys()` method. Since there can be a lot of parameters, a list of all parameters that contain a search string can be retrieved by calling ``DOPBase.keysSearch(searchterm)``. Channel-specific parameters are named with a prefix `'ch1_'` followed by the name (e.g. `'ch2_prf'` gives the pulse repetition frequency of channel 2). The available channel-specific parameter names can be retrieved with `bdd.keysChannel(channel)`.
+These classes have all available informations from the read file stored. They are subclasses of `DOPBase`. Every parameter of the file can be retrieved either by using the method `bdd.getParam(param)` or by treating the instance as a dictionary `bdd[param]`, where `param` is a string with the name of the parameter. All available parameters can be retrieved with the `bdd.keys()` method. Since there can be a lot of parameters, a list of all parameters that contain a search string can be retrieved by calling ``bdd.keysSearch(searchterm)``. Channel-specific parameters are named with a prefix `'ch1_'` followed by the name (e.g. `'ch2_prf'` gives the pulse repetition frequency of channel 2). The available channel-specific parameter names can be retrieved with `bdd.keysChannel(channel)`.
 
 Additionally there are some predefined methods to retrieve often used data:
 
@@ -38,7 +38,7 @@ For all these methods `channel` can be an integer or a list of integers. In the 
 While DOPpy is primarily designed to import the data into python a couple of functions for quick visualisation of the measured data are available:
 
 - `bdd.contour(profile, channel)` plots a color-coded contour-plot of the profile with type `profile` for the specified channel over time and depth. See `bdd.getChannels` and `bdd.getProfileType` for available channels and their profile types, respectively.
-- `bdd.replay(profile, channel)` plots an animation of the profile-snapshots with type `profile` for the specified channel over the depth. See `DOPBase.getChannels` and `DOPBase.getProfileType` for available channels and their profile types, respectively.
+- `bdd.replay(profile, channel)` plots an animation of the profile-snapshots with type `profile` for the specified channel over the depth. See `bdd.getChannels` and `bdd.getProfileType` for available channels and their profile types, respectively.
 
 For both methods `channel` can be an integer or a list of integers. They raise an error if the data is not available for at least one requested channel.
 
