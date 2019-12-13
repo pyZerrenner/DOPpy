@@ -11,9 +11,10 @@ DOPpy was written in Python 3.6 but should be compatible with Python 2.7. Requir
 ## Usage
 This section is a quick overview of the features of DOPpy. For more information refer to the doc-strings of the respective functions.
 
-Call the function `DOP(fname)` with the absolute or relative path to the BDD-file `fname`. The function determines which version (DOP2000 or 3000) the file is and returns a `DOP2000` or `DOP3000` instance, respectively.
+Put the file `DOPpy.py` somwhere Python can find it (e.g. the folder of your script or a folder listed in the PATH veriable). Call the function `DOP(fname)` from the module with the absolute or relative path to the BDD-file `fname`. The function determines which version (DOP2000 or 3000) the file is and returns a `DOP2000` or `DOP3000` instance, respectively.
 
 ```python
+import DOP from DOPpy
 bdd = DOP('path/to/file.bdd')
 ```
 
@@ -46,3 +47,11 @@ For both methods `channel` can be an integer or a list of integers. They raise a
 ## Notes / Known bugs
 - 2D/3D-component measurements are currently not supported.
 - Very old DOP2000 file versions might not be read correctly. The script was tested with file version `'BINWDOPV4.06.1'` .
+
+## Changelog
+v2.01:
+- Removed aliasing from echo-profile.
+- Added `maxtimes` argument to `DOPBase.contour` to avoid RAM overflow.
+
+v2.00:
+- Initial "release"
