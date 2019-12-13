@@ -1,7 +1,7 @@
 # DOPpy
 Read binary files (.bdd) of DOP measurement devices
 
-The DOP measurement device series by [Signal Processing](https://www.signal-processing.com/) implements the ultrasonic Doppler velocimetry (UDV) measurement method to record velocity profiles in liquids. The measurement data can be saved in an ascii file (.ADD = ascii DOP data) or a binary file (.BDD = binary DOP data). While the ascii is human readable and relatively easy to import, it is generally larger than the binary format and does only contain the time, position and velocity information of the measurement. The binary format contains much more information (measurement parameters & settings) as well as having a more compact file-size. The downside is of course that the binary structure has to be decoded. The Job of DOPpy is to read the binary data of a BDD-file and provide it for further analysis within a Python console or scripts. 
+The DOP measurement device series by [Signal Processing](https://www.signal-processing.com/) implements the ultrasound Doppler velocimetry (UDV) measurement method to record velocity profiles in liquids. The measurement data can be saved in an ascii file (.ADD = ascii DOP data) or a binary file (.BDD = binary DOP data). While the ascii is human readable and relatively easy to import, it is generally larger than the binary format and does only contain the time, position and velocity information of the measurement. The binary format contains much more information (measurement parameters & settings) as well as having a more compact file-size. The downside is of course that the binary structure has to be decoded. The job of DOPpy is to read the binary data of a BDD-file and provide it for further analysis within a Python console or script. 
 
 Currently only files of the DOP2000 and DOP3000/3010 systems are supported. DOP4000 files are similar to the DOP3000 formats, but were not tested.
 
@@ -14,7 +14,7 @@ This section is a quick overview of the features of DOPpy. For more information 
 Call the function `DOP(fname)` with the absolute or relative path to the BDD-file `fname`. The function determines which version (DOP2000 or 3000) the file is and returns a `DOP2000` or `DOP3000` instance, respectively.
 
 ```python
-bdd = DOP(fname)
+bdd = DOP('path/to/file.bdd')
 ```
 
 ### Getting Parameters & Data
