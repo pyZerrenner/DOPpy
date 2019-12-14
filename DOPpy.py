@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
 """Classes for reading BDD-files of DOP 2000 and 3000/3010
 
-| Version: 2.10
-| Date: 2017-05-30
+| Version: 2.11
+| Date: 2018-10-19
 
 Usage
 =====
     Call the function ``DOP(fname)`` with the absolute or relative path to the
     BDD-file `fname`. The function determines which version (DOP2000 or 3000)
-    the file is and returns a `DOP2000` or `DOP3000` instance,
-    respectively.
+    the file is and returns a `DOP2000` or `DOP3000` instance, respectively.
 
 Getting Parameters
 ==================
@@ -75,7 +74,7 @@ Notes
 =====
     * 2D/3D-component measurements are currently not supported.
     * Very old DOP 2000 file versions might not be read correctly. The script
-      was tested with file version 'BINWDOPV4.06.1'.
+      was tested with file version ``'BINWDOPV4.06.1'``.
 
 
 Changelog
@@ -119,6 +118,12 @@ v2.10:
     * When decoding the comment string any character that does not fit the
       used codec is now ignored. This behaviour can be changed with the
       `decode_errors` keyword-argument for the function `DOP`.
+v2.11:
+    * Corrected processing of DOP3000 'aquisitionRate'-parameter.
+    * The methods `DOPBase._read` and `DOPBase._refine` now raise an exception
+      if they are called directly or are not redefined by a subclass.
+    * Added the ability to replace parameter values from the file. See the
+      `DOP` docstring for details.
 """
 
 
@@ -168,6 +173,20 @@ class DOPBase(object):
 
         Keyword-Arguments:
         ==================
+        replaceParam: dict
+            Replace parameter values from the bdd file by a different value.
+            The dictionary keys are parameter names as they are returned from
+            the `DOPBase.keys` or `DOPBase.keysChannel` methods. For parameter
+            names of the latter case, the parameter is changed to the same
+            value for all channels. The dictionary value gives the new
+            parameter value. The old parameter value is discarded and can only
+            be restored by reading the bdd file again.
+
+            **Important for DOP3000/3010:**  The standard behaviour of the
+            `getDepth` method is to return the depth values stored in the file.
+            These are NOT affected by changes of any parameters (e.g.
+            ``'soundSpeed'``). Use the optional argument ``version='Calc'`` to
+            get newly calculated depth values in this case.
         saveMeas: bool
             Save the raw data of the measurement blocks into the returned class
             instance. This may cause a ``MemoryError`` for very large files or
@@ -175,11 +194,12 @@ class DOPBase(object):
         decode_errors: str
             Error handling of ``UnicodeDecodeError`` during decoding of
             strings. See documentation of the `errors` argument in
-            ``str.decode`` for all possible options. Default: ``'ignore'``
+            `str.decode` for all possible options. Default: ``'ignore'``.
         """
         self._fname = fname
         self._file = None
         self._values = {}
+        self._replaceParam = kw.pop('replaceParam', {})
         self._saveMeas = kw.pop('saveMeas', False)
         self._decode_errors = kw.pop('decode_errors', 'ignore')
 
@@ -204,7 +224,9 @@ class DOPBase(object):
         # (use the ``save=self._saveMeas`` argument for parameters in the
         # measurement block). Use methods `self.setParam` and `self.getParam`
         # to modify parameter values.
-        pass
+
+        raise Exception('The method "_read" of {} '.format(self.__class__) +
+                        'has not been implemented.')
 
 
     def _refine(self):
@@ -212,6 +234,10 @@ class DOPBase(object):
         """
         # This method is implemented by subclasses.
         # Use methods `setParam` and `getParam` to modify parameter values.
+
+        # This method should handle the replacement of parameter values from
+        # the `replaceParam` argument BEFORE any paramters are used in
+        # calculations.
 
         # This method should define the parameters:
         #   'channelUsed': List of channel numbers that were used
@@ -226,7 +252,9 @@ class DOPBase(object):
         #   'velo'/'echo'/...: All recorded profiles as named in 'profTypeName'
         #   'samplingVolume': Thickness of the sampling volume in millimeter
         #                     May be float('nan') if unknown
-        pass
+
+        raise Exception('The method "_refine" of {} '.format(self.__class__) +
+                        'has not been implemented.')
 
 
     def keys(self):
@@ -443,17 +471,19 @@ class DOPBase(object):
             vmax = self.getParam(preCh+'veloMax')
             jump = 2*vmax*jumpSize
 
+            # find jumps in the velocity of the specified size
             velo = self.getParam(preCh+'velo').copy()
             veloDiff = np.diff(velo, axis=1)
-
             posJump = zip(*np.where(veloDiff > jump))
             negJump = zip(*np.where(veloDiff < -jump))
 
+            # correct the jumps
             for ti, di in posJump:
                 velo[ti,di+1:] -= 2*vmax
             for ti, di in negJump:
                 velo[ti,di+1:] += 2*vmax
 
+            # save the new velocity data
             self.setParam(preCh+'velo', velo)
 
 
@@ -1240,14 +1270,28 @@ class DOP2000(DOPBase):
     def _refine(self):
         """ Process data read from the BDD file
         """
-        # process information block
+        ### replace specified parameters with new values
+        for param, newval in self._replaceParam.items():
+            if param in self.keys():
+                # param is a regular parameter
+                self.setParam(newval)
+            elif param in self.keysChannel():
+                # param is a channel parameter, set newval for all channels
+                for ch in range(1,11,1):
+                    preCh = self._prefixChannel(ch)
+                    self.setParam(preCh + param, newval)
+            else:
+                warn('Requested replacement of parameter {!r} '.format(param) +
+                     'failed: Parameter unknown.')
+
+        ### process information block
         for param in ['version', 'parameter', 'comment']:
             val = self.getParam(param).decode(self._codec,
                                               errors=self._decode_errors)
             val = val.strip('\00\r\n')
             self.setParam(param, val)
 
-        # measurement mode & parameter processing
+        ### measurement mode & parameter processing
         if self.getParam('multi'):
             self._mode = 'multi'
             self._refine_multi()
@@ -1261,7 +1305,7 @@ class DOP2000(DOPBase):
             self._mode = 'front'
             self._refine_front()
 
-        # process measured profiles
+        ### process measured profiles
         # After 2**32-1 us the time-value (int32) overflows (returns to 0).
         timeOverflow = 2**32-1  # in us (about 1.193 h)
 
@@ -1547,7 +1591,7 @@ class DOP3000(DOPBase):
         ['tgcGateSize', 4*26, 'i'],  # 0 = 0.666 ns, 1 = 1.333 ns
         ['bandwidth', 4*27, 'i'],  # 0 = 50 kHz, 1 = 100 kHz, ..., 5 = 300 kHz
         ['gainOverall', 4*28, 'i'],  # 0 = 0 dB, 1 = 6 dB, 2 = 14 dB, 3 = 20 dB
-        ['aquisitionRate', 4*29, 'i'],  # 0 = 6 MHz, 1: 12 or 40 MHz
+        ['aquisitionRate', 4*29, '4b'],  # byte 0 is the byte index => MHz
         ['_internal_1', 4*30, 'i'],  #
         ['profileType', 4*31, 'i'],
         ['display', 4*32, 'i'],  # 0 = horizontal, 1 = vertical
@@ -1972,44 +2016,27 @@ class DOP3000(DOPBase):
     def _refine(self):
         """ Process data read from the BDD file
         """
+        ### replace specified parameters with new values
+        for param, newval in self._replaceParam.items():
+            if param in self.keys():
+                # param is a regular parameter
+                self.setParam(newval)
+            elif param in self.keysChannel():
+                # param is a channel parameter, set newval for all channels
+                for ch in range(1,11,1):
+                    preCh = self._prefixChannel(ch)
+                    self.setParam(preCh + param, newval)
+            else:
+                warn('Requested replacement of parameter {!r} '.format(param) +
+                     'failed: Parameter unknown.')
+
+
         ### process information parameters
         for param in ['version', 'comment']:
             val = self.getParam(param).decode(self._codec,
                                               errors=self._decode_errors)
             val = val.strip('\00\r\n')
             self.setParam(param, val)
-
-        ### process measurement data
-        # After 2**32-1 ms/10 the time-value (int32) overflows (returns to 0).
-        timeOverflow = 2**32-1  # in ms/10 (about 4.97 days)
-
-        for ch in self.getChannels():
-            preCh = self._prefixChannel(ch)
-
-            # correct time-overflow & convert to seconds
-            timestamp = self.getParam(preCh + 'time')  # in ms/10
-            timestamp[1:] += np.cumsum(np.ediff1d(timestamp) < 0)*timeOverflow
-            self.setParam(preCh + 'time', timestamp*1e-4)
-
-            # correct depth from file
-            self._modParam(preCh + 'depthFile', lambda d: d/10.)
-
-            # caluclate depth in mm from operation parameters
-            self.setParam(preCh + 'depthCalc', self._calcDepth(ch))
-
-            # caluclate velocity in m/s
-            if 'velo' in self.getProfileType(ch):
-                velo = self.getParam(preCh + 'velo')
-                velo, vmax = self._calcVelo(velo, ch)
-                self.setParam(preCh + 'velo', velo)
-                self.setParam(preCh + 'veloMax', vmax)
-
-            # caluclate echo
-            if 'echo' in self.getProfileType(ch):
-                echo = self.getParam(preCh + 'echo')
-                echo, emax = self._calcEcho(echo, ch)
-                self.setParam(preCh + 'echo', echo)
-                self.setParam(preCh + 'echoMax', emax)
 
         ### process singular parameters
         for ch in range(1,11,1):
@@ -2047,6 +2074,44 @@ class DOP3000(DOPBase):
             self.setParam(preCh + 'samplingVolume',
                           self._calcSamplingVolume(ch))
 
+            self._copyParam(preCh + 'aquisitionRate',
+                            preCh + 'aquisitionRate_file')
+            self._modParam(preCh + 'aquisitionRate',
+                           lambda x: x[x[0]+1]*1e3)
+
+
+        ### process measurement data
+        # After 2**32-1 ms/10 the time-value (int32) overflows (returns to 0).
+        timeOverflow = 2**32-1  # in ms/10 (about 4.97 days)
+
+        for ch in self.getChannels():
+            preCh = self._prefixChannel(ch)
+
+            # correct time-overflow & convert to seconds
+            timestamp = self.getParam(preCh + 'time')  # in ms/10
+            timestamp[1:] += np.cumsum(np.ediff1d(timestamp) < 0)*timeOverflow
+            self.setParam(preCh + 'time', timestamp*1e-4)
+
+            # correct depth from file
+            self._modParam(preCh + 'depthFile', lambda d: d/10.)
+
+            # caluclate depth in mm from operation parameters
+            self.setParam(preCh + 'depthCalc', self._calcDepth(ch))
+
+            # caluclate velocity in m/s
+            if 'velo' in self.getProfileType(ch):
+                velo = self.getParam(preCh + 'velo')
+                velo, vmax = self._calcVelo(velo, ch)
+                self.setParam(preCh + 'velo', velo)
+                self.setParam(preCh + 'veloMax', vmax)
+
+            # caluclate echo
+            if 'echo' in self.getProfileType(ch):
+                echo = self.getParam(preCh + 'echo')
+                echo, emax = self._calcEcho(echo, ch)
+                self.setParam(preCh + 'echo', echo)
+                self.setParam(preCh + 'echoMax', emax)
+
 
     def _calcDepth(self, channel):
         """ Calculate gate depth in mm for a given channel
@@ -2055,16 +2120,10 @@ class DOP3000(DOPBase):
 
         gateN = self.getParam(preCh+'gateN')
         gate1 = self.getParam(preCh+'gate1')  # Par[9]
-        resolution = self.getParam(preCh+'resolution')  # Par[10]
+        resolution = self.getParam(preCh+'resolution_file')  # Par[10]
         soundSpeed = self.getParam(preCh+'soundSpeed')  # Par[19]
-        aquisitionRate = self.getParam(preCh+'aquisitionRate') % 256 # Par[29]
+        aquisitionRate = self.getParam(preCh+'aquisitionRate')  # Par[29]
         hardwareDelay = self.getParam(preCh+'hardwareDelay')  # Par[46]
-
-        if aquisitionRate == 0:
-            aquisitionRate = 6e3
-        else:
-            raise ValueError('I don\'t know what aquisition rate ' +
-                             '{} means.'.fromat(aquisitionRate))
 
         gateNumber = np.arange(1,gateN+1)
         term1 = (gate1+(resolution+1)*(gateNumber-1)) / (2*aquisitionRate)
@@ -2088,7 +2147,7 @@ class DOP3000(DOPBase):
         def velocity(data):
             # calculate doppler frequency [Hz]
             prf = self.getParam(preCh+'prf')
-            veloScale = self.getParam(preCh+'veloScale')
+            veloScale = self.getParam(preCh+'veloScale_file')
             fdoppler = data*veloScale*1e3 / (256*np.pi*prf)
 
             # calculate velocity [mm/s]
@@ -2169,13 +2228,27 @@ def DOP(fname, **kw):
 
     Keyword-Arguments:
     ==================
+    replaceParam: dict
+        Replace parameter values from the bdd file by a different value.
+        The dictionary keys are parameter names as they are returned from
+        the `DOPBase.keys` or `DOPBase.keysChannel` methods. For parameter
+        names of the latter case, the parameter is changed to the same
+        value for all channels. The dictionary value gives the new
+        parameter value. The old parameter value is discarded and can only
+        be restored by reading the bdd file again.
+
+        **Important for DOP3000/3010:**  The standard behaviour of the
+        `getDepth` method is to return the depth values stored in the file.
+        These are NOT affected by changes of any parameters (e.g.
+        ``'soundSpeed'``). Use the optional argument ``version='Calc'`` to get
+        newly calculated depth values in this case.
     saveMeas: bool
         Save the raw data of the measurement blocks into the returned class
         instance. Default: False
     decode_errors: str
         Error handling of ``UnicodeDecodeError`` during decoding of
         strings. See documentation of the `errors` argument in
-        ``str.decode`` for all possible options. Default: ``'ignore'``
+        `str.decode` for all possible options. Default: ``'ignore'``.
     """
     # open file
     if fname.endswith('.bz2'):
@@ -2195,5 +2268,5 @@ def DOP(fname, **kw):
     elif version.startswith(b'BINUDOPV'):
         return DOP3000(fname, **kw)
     else:
-        raise Exception('BDD version {} '.format(repr(version)) +
-                        'of file {} '.format(repr(fname)) + 'is unknown.')
+        raise Exception('BDD version {!r} '.format(version) +
+                        'of file {!r} is unknown.'.format(fname))
