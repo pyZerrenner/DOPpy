@@ -49,6 +49,9 @@ For both methods `channel` can be an integer or a list of integers. They raise a
 - Very old DOP2000 file versions might not be read correctly. The script was tested with file version `'BINWDOPV4.06.1'` .
 
 ## Changelog
+v2.12-beta:
+- The `DOPBase.printSettings` method now also prints parameters resulting from the operation parameters (maximum velocity and depth). A spelling error in the output was corrected.
+      
 v2.11:
 - Corrected processing of the DOP3000 `'aquisitionRate'`-parameter.
 - The methods `DOPBase._read` and `DOPBase._refine` now raise an exception if they are called directly or are not redefined by a subclass.
