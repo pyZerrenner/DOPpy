@@ -12,12 +12,13 @@ REQUIREMENTS = ['numpy', 'matplotlib']
 CLASSIFIERS = [ 
     'Development Status :: 4 - Beta', 
     'Intended Audience :: Science/Research',
-    'Topic :: File-import', 
+    'Topic :: Scientific/Engineering',
     #'License :: OSI Approved :: MIT License', 
     'Programming Language :: Python', 
     'Programming Language :: Python :: 2', 
     'Programming Language :: Python :: 2.7', 
     'Programming Language :: Python :: 3', 
+    'Natural Language :: English',
     ] 
   
 # calling the setup function  
