@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Classes for reading BDD-files of DOP 2000 and 3000/3010
 
-| Version: 2.04
-| Date: 2017-02-14
+| Version: 2.10
+| Date: 2017-05-30
 
 Usage
 =====
@@ -22,7 +22,7 @@ Getting Parameters
     list of all parameters that contain a search string can be retrieved by
     calling ``DOPBase.keysSearch(searchterm)``. Channel-specific parameters are
     named with a prefix ``'ch1_'`` followed by the name (e.g. ``'ch2_prf'``).
-    The available channel-specific parameters can be retrieved with
+    The available channel-specific parameter names can be retrieved with
     ``DOPBase.keysChannel(channel)``.
 
     Additionally there are some predefined methods to retrieve often used data:
@@ -42,11 +42,15 @@ Getting Parameters
       channel-specific parameter given in `param` of the channel (see
       `DOPBase.keysChannel`).
 
-    For all methods `channel` can be an integer or a list of integers. In the
-    latter case a list of values is returned. If `channel` is omitted or set to
-    ``None``, it defaults to all recorded channels (see `DOPBase.getChannels`).
-    These methods raise an error if the data is not available for at least one
-    requested channel.
+    For all these methods `channel` can be an integer or a list of integers. In
+    the latter case a list of values is returned. If `channel` is omitted or
+    set to ``None``, it defaults to all recorded channels (see
+    `DOPBase.getChannels`). These methods raise an error if the data is not
+    available for at least one requested channel.
+
+    * ``DOPBase.printSettings(channel)`` prints relevant operation parameters
+      that were used during the measurement with the given channel. The
+      mandatory argument `channel` is an integer.
 
 Displaying Measurements
 =======================
@@ -69,7 +73,7 @@ Displaying Measurements
 
 Notes
 =====
-    * 2D/3D-component measurements can be read but are not supported.
+    * 2D/3D-component measurements are currently not supported.
     * Very old DOP 2000 file versions might not be read correctly. The script
       was tested with file version 'BINWDOPV4.06.1'.
 
@@ -80,21 +84,41 @@ v2.00:
     * Initial release
 v2.01:
     * Removed aliasing from echo-profile.
-    * Added `maxtimes` argument to ``DOPBase.contour`` to avoid RAM overflow.
+    * Added `maxtimes` argument to `DOPBase.contour` to avoid RAM overflow.
 v2.02:
     * Fixed Doppler angle in velocity calculation of `DOP3000` and added
       Doppler angle in velocity calculation of `DOP2000`.
-    * Added ``DOPBase.removeAliasing`` to remove aliasing effects for smooth
+    * Added `DOPBase.removeAliasing` to remove aliasing effects for smooth
       velocity data.
     * Added the option to plot custom horizontal and vertical lines in the
-      ``DOPBase.replay`` method (see the Keyword-Argument section in the
+      `DOPBase.replay` method (see the Keyword-Argument section in the
       method's documentation).
 v2.03:
-    * Imports true division from __future__ to avoid incompatibilities
+    * Imports true division from ``__future__`` to avoid incompatibilities
       for use with Python 2.7 when dividing by integers.
-    * Corrected a typo in `keysChannel`.
+    * Corrected a typo in `DOPBase.keysChannel`.
 v2.04:
     * Corrected time-calculation for `DOP2000`.
+v2.10:
+    * Optimized code for reading the BDD-files (for DOP2000 and DOP3000),
+      which is now less memory intensive. This allows larger files to be read
+      faster and with less possibility of an ``Memory Error``. The raw
+      measurement data from the file are by default not saved any more. This
+      behaviour can be changed by setting the `saveMeas` argument to ``True``
+      in the `DOP`-function.
+    * Transformed certain parameters from their raw value to sensible ones
+      used by the DOP-software. The raw parameter values are stored with an
+      suffix ``'_file'`` to the parameter name. Examples: emitting power,
+      TGC mode, spatial filter bandwidth, sensitivity,
+      sampling volume (DOP3000 only).
+    * Added the `DOPBase.printSettings` method to display important operation
+      parameters used in the measurement.
+    * Corrected axis labels in `DOPBase.contour` and `DOPBase.replay` and
+      fixed handling of `timerange` and `depthrange` arguments  in
+      `DOPBase.contour`.
+    * When decoding the comment string any character that does not fit the
+      used codec is now ignored. This behaviour can be changed with the
+      `decode_errors` keyword-argument for the function `DOP`.
 """
 
 
@@ -132,7 +156,7 @@ class DOPBase(object):
     """
     _codec = 'cp1252'  # file codec
 
-    def __init__(self, fname):
+    def __init__(self, fname, **kw):
         """ Read a DOP binary file (*.BDD)
 
         The file may be a *.gz or *.bz2-archive.
@@ -141,11 +165,23 @@ class DOPBase(object):
         ==========
         fname: str
             Path to the BDD-file.
+
+        Keyword-Arguments:
+        ==================
+        saveMeas: bool
+            Save the raw data of the measurement blocks into the returned class
+            instance. This may cause a ``MemoryError`` for very large files or
+            may slow down the reading process. Default: False
+        decode_errors: str
+            Error handling of ``UnicodeDecodeError`` during decoding of
+            strings. See documentation of the `errors` argument in
+            ``str.decode`` for all possible options. Default: ``'ignore'``
         """
         self._fname = fname
         self._file = None
         self._values = {}
-        self._chToMeas = [[] for i in range(10)]
+        self._saveMeas = kw.pop('saveMeas', False)
+        self._decode_errors = kw.pop('decode_errors', 'ignore')
 
         if self._fname.endswith('.bz2'):
             self._file = bz2.BZ2File(self._fname, 'rb')
@@ -164,8 +200,10 @@ class DOPBase(object):
         """ Read the data in the given BDD file
         """
         # This method is implemented by subclasses.
-        # Use methods `_readParam` to get a parameter value from the file
-        # Use methods `setParam` and `getParam` to modify parameter values.
+        # Use methods `self._readParam` to get a parameter value from the file
+        # (use the ``save=self._saveMeas`` argument for parameters in the
+        # measurement block). Use methods `self.setParam` and `self.getParam`
+        # to modify parameter values.
         pass
 
 
@@ -186,6 +224,8 @@ class DOPBase(object):
         #   'time': Time array in seconds
         #   'depth': Gate depth array in millimeter
         #   'velo'/'echo'/...: All recorded profiles as named in 'profTypeName'
+        #   'samplingVolume': Thickness of the sampling volume in millimeter
+        #                     May be float('nan') if unknown
         pass
 
 
@@ -268,7 +308,7 @@ class DOPBase(object):
         return 'prof{:d}_'.format(profile)
 
 
-    def _readParam(self, param, offset, fmt):
+    def _readParam(self, param, offset, fmt, save=True):
         """ Read and return a single parameter from file
 
         Call only if self._file is an opened file.
@@ -282,6 +322,8 @@ class DOPBase(object):
         fmt: str
             Data-format string of the parameter (see help(struct) and
             help(DOP3000))
+        save: bool
+            Whether to automatically save the value under the parameter name.
 
         Returns:
         ========
@@ -317,7 +359,8 @@ class DOPBase(object):
             value = self._byteToBit(self._file.read(size))[pos]
             value = bool(int(value))
 
-        self.setParam(param, value)
+        if save:
+            self.setParam(param, value)
 
         return value
 
@@ -334,10 +377,41 @@ class DOPBase(object):
         return self._values[param]
 
 
+    def _modParam(self, param, fct):
+        """ Modify a parameter value.
+
+        Arguments:
+        ==========
+        fct: function
+            A function that takes the parameter value as argument and returns
+            the new parameter value.
+        """
+        self.setParam(param, fct(self.getParam(param)))
+
+
+    def _copyParam(self, param, param2):
+        """ Copy a parameter `param` value to another parameter `param2`.
+        """
+        self.setParam(param2, self.getParam(param))
+
+
+    def _popParam(self, param, *args):
+        """ Delete a parameter `param` and return its value.
+        The next argument is returned if the parameter does not exist.
+        """
+        return self._values.pop(param, *args)
+
+
     def __getitem__(self, param):
         """ Return the value of a parameter
         """
         return self.getParam(param)
+
+
+    def __setitem__(self, param, value):
+        """ Sets the value of a parameter
+        """
+        return self.setParam(param, value)
 
 
     def removeAliasing(self, jumpSize=.8):
@@ -347,7 +421,7 @@ class DOPBase(object):
         show an aliasing effect.
 
         Do not use this method with very noisy data (e.g. when the DOP's
-        sensitivity is set to 'Very high'). The algorithm cannot distinguish
+        sensitivity is set to 'very high'). The algorithm cannot distinguish
         between noise spikes and aliasing jumps. Compare the results with the
         ``DOPBase.replay`` method to ensure that the data is correct.
 
@@ -381,6 +455,7 @@ class DOPBase(object):
                 velo[ti,di+1:] += 2*vmax
 
             self.setParam(preCh+'velo', velo)
+
 
     def getChannels(self):
         """ Returns the channels in use
@@ -511,6 +586,64 @@ class DOPBase(object):
         return self.getChannelParam('echo', channel)
 
 
+    def printSettings(self, channel, align='>16'):
+        """ Prints out the operating parameters of a channel
+
+        Arguments:
+        ==========
+        channel: int
+            Channel number.
+        align: str
+            Alignment format string for the printed values.
+        """
+        print('Operating parameters of channel {:d}'.format(channel))
+
+        if not channel in self.getChannels():
+            print('  Channel was not used in this measurement.')
+
+            gate1 = float('nan')
+        else:
+            gate1 = self.getDepth(channel)[0]
+
+        # calculate tgc value
+        tgc = self.getChannelParam('tgcMode', channel)
+        if tgc == 'uniform':
+            tgc1 = self.getChannelParam('tgcStart', channel)
+            tgc = tgc + ' ({:.0f})'.format(tgc1)
+        elif tgc == 'slope':
+            tgc1 = self.getChannelParam('tgcStart', channel)
+            tgc2 = self.getChannelParam('tgcEnd', channel)
+            tgc = tgc + ' ({:.0f}, {:.0f})'.format(tgc1, tgc2)
+
+        # print values
+        print(('  US Frequency [Hz]:     {:'+align+'.0f}').format(
+              self.getChannelParam('emitFreq', channel)))
+        print(('  Burst length:          {:'+align+'.0f}').format(
+              self.getChannelParam('burstLength', channel)))
+        print(('  Emitting power:        {:'+align+'}').format(
+              self.getChannelParam('emitPower', channel)))
+        print(('  Tgc [dB]:              {:'+align+'s}').format(tgc))
+        print(('  PRF [us]:              {:'+align+'.0f}').format(
+              self.getChannelParam('prf', channel)))
+        print(('  First gate depth [mm]: {:'+align+'.2f}').format(gate1))
+        print(('  Number of gates:       {:'+align+'.0f}').format(
+              self.getChannelParam('gateN', channel)))
+        print(('  Resolution [mm]:       {:'+align+'.3f}').format(
+              self.getChannelParam('resolution', channel)))
+        print(('  Sampling volume [mm]:  {:'+align+'.3f}').format(
+              self.getChannelParam('samplingVolume', channel)))
+        print(('  Emission/profile:      {:'+align+'.0f}').format(
+              self.getChannelParam('emitNprofile', channel)))
+        print(('  Doppler angle:         {:'+align+'.0f}').format(
+              self.getChannelParam('dopplerAngle', channel)))
+        print(('  Sensitivity:           {:'+align+'s}').format(
+              self.getChannelParam('sensitivity', channel)))
+        print(('  Velocity scale factor: {:'+align+'.2f}').format(
+              self.getChannelParam('veloScale', channel)))
+        print(('  Sound speed [m/s]:     {:'+align+'.0f}').format(
+              self.getChannelParam('soundSpeed', channel)))
+
+
     def contour(self, profile, channel=None, timerange=slice(None),
                 depthrange=slice(None), maxtimes=1000, **kw):
         """ Show the contour plot of a profile over time and depth
@@ -555,6 +688,12 @@ class DOPBase(object):
         if channel is None:
             channel = self.getChannels()
 
+        if not isinstance(timerange, slice):
+            timerange = slice(*timerange)
+
+        if not isinstance(depthrange, slice):
+            depthrange = slice(*depthrange)
+
         # number of channels
         try:
             chN = len(channel)
@@ -567,7 +706,7 @@ class DOPBase(object):
         data = self.getChannelParam(profile, channel)
 
         fig, ax = plt.subplots(chN, 1, squeeze=False, sharex=True)
-        ax[0,-1].set_xlabel('Time [s]')
+        ax[-1,0].set_xlabel('Time [s]')
 
         for ci, ch in enumerate(channel):
             ax[ci, 0].set_ylabel('Depth [mm]')
@@ -636,11 +775,11 @@ class DOPBase(object):
             values are plotted for all channels.
         hlinesStyle: dict
             Keyword dictionary passed to ``matplotlib.pyplot.hlines`` alongside
-            the positions given in the `hlines` argument. May include `'xmin'`-
-            and `'xmax'`-entries to define the lines' start and end. If
-            multiple channels are given in `channel`, a tuple of dicts for each
-            respective channel may be given. If a single dict is given, its
-            entries are used for all channels.
+            the positions given in the `hlines` argument. May include
+            ``'xmin'``- and ``'xmax'``-keys to define the start and end of
+            the lines. If multiple channels are given in `channel`, a tuple of
+            dicts for each respective channel may be given. If a single dict is
+            given, its entries are used for all channels.
         vlines: list or tuple
             List of positions at which vertical lines are plotted. By default
             the lines are plotted over the whole height of the plot. If
@@ -649,11 +788,11 @@ class DOPBase(object):
             values are plotted for all channels.
         vlinesStyle: dict
             Keyword dictionary passed to ``matplotlib.pyplot.hlines`` alongside
-            the positions given in the `hlines` argument. May include `'ymin'`-
-            and `'ymax'`-entries to define the lines' start and end. If
-            multiple channels are given in `channel`, a tuple of dicts for each
-            respective channel may be given. If a single dict is given, its
-            entries are used for all channels.
+            the positions given in the `hlines` argument. May include
+            ``'ymin'``- and ``'ymax'``-keys to define the start and end of
+            the lines. If multiple channels are given in `channel`, a tuple of
+            dicts for each respective channel may be given. If a single dict is
+            given, its entries are used for all channels.
         """
         def getData(channel, index='all'):
             data = self.getChannelParam(profile, channel)
@@ -686,6 +825,7 @@ class DOPBase(object):
         vlines = kw.pop('vlines', [])
 
         fig, ax = plt.subplots(chN, 1, squeeze=False)
+        ax[-1,-1].set_xlabel('Depth [mm]')
 
         lines = [None]*chN
         meanLines = [None]*chN
@@ -694,6 +834,7 @@ class DOPBase(object):
                     'Timestamp: {:.2f} s'
         for ci, ch in enumerate(channel):
             a = ax[ci,0]
+            a.set_ylabel('Velocity [m/s]')
             a.grid()
             a.set_ylim(np.min(getData(ch, slice(start,end))),
                        np.max(getData(ch, slice(start,end))))
@@ -768,25 +909,26 @@ class DOP2000(DOPBase):
         ['mainFreq', 1536+0, 'I'],
         ['prf', 1536+4, 'I'],  # in us
         ['emitFreqOff', 1536+8, 'I'],  # emitFreq is at offset 279+emitFreqOff
-        ['burstLengh', 1536+12, 'I'],  # in cycles
+                                       # not documented
+        ['burstLength', 1536+12, 'I'],  # in cycles
         ['emitPower', 1536+16, 'I'],  # 0,1,2=low,medium,high
         ['gateN', 1536+20, 'I'],
-        ['emitN', 1536+24, 'I'],
-        ['_internalUse_2', 1536+28, 'I'],  # exact decoding unknown
+        ['emitNprofile', 1536+24, 'I'],
+        ['sensitivity', 1536+28, 'I'],  # not documented
         ['_internalUse_3', 1536+32, 'I'],  # exact decoding unknown
         ['soundSpeed', 1536+36, 'I'],  # in m/s
         ['veloScale', 1536+40, 'I'],
-        ['timeRes', 1536+44, 'I'],  # in ns
-        ['timeGate1', 1536+48, 'I'],  # in ns
+        ['resolution', 1536+44, 'I'],  # in ns
+        ['gate1', 1536+48, 'I'],  # in ns
         ['dopplerAngle', 1536+52, 'i'],  # in degree, 'I' also possible
         ['unit', 1536+56, 'I'],  # use doppler angle
         ['veloOffset', 1536+60, 'i'],
-        ['tgcStart', 1536+64, 'I'],  # in dB
-        ['tgcEnd', 1536+68, 'I'],  # in dB
+        ['tgcStart', 1536+64, 'i'],  # in dB
+        ['tgcEnd', 1536+68, 'i'],  # in dB
         ['gateAutoN', 1536+72, '?xxx'],
         ['gateAutoNmax', 1536+76, 'I'],
-        ['memoryProfileN', 1536+80, 'I'],
-        ['skipProfileN', 1536+84, 'I'],  # exact decoding unknown
+        ['memoryProfN', 1536+80, 'I'],
+        ['skipProfN', 1536+84, 'I'],  # exact decoding unknown
         ['fftWindow', 1536+88, 'I'],  # exact decoding unknown
         ['gateFirst', 1536+92, 'I'],
         ['gateLast', 1536+96, 'I'],
@@ -844,7 +986,7 @@ class DOP2000(DOPBase):
         ['emitFreq4', 1536+292, 'I'],
         ['emitFreq5', 1536+296, 'I'],
         ['tgcCellDist', 1536+300, 'I'],  # in ns
-        ['filterLowPass', 1536+304, 'I'],
+        ['bandwidth', 1536+304, 'I'],
         ['_internalUse_11', 1536+308, 'I'],  # exact decoding unknown
         ['gainOverall', 1536+312, 'I'],
         ['emitRecieveSameBNC', 1536+316, 'I'],  # 0=yes
@@ -896,16 +1038,16 @@ class DOP2000(DOPBase):
         ['multi_profN', 2560+40, '10I'],
         ['multi_prf', 2560+80, '10I'],  # in us
         ['multi_gateN', 2560+120, '10I'],
-        ['multi_timeRes', 2560+160, '10I'],  # in ns
+        ['multi_resolution', 2560+160, '10I'],  # in ns
         ['multi_emitFreq', 2560+200, '10I'],  # in kHz
         ['multi_emitPower', 2560+240, '10I'],  # 0,1,2=low,medium,high
-        ['multi_timeGate1', 2560+280, '10I'],  # in ns
-        ['multi_tgcSart', 2560+320, '10i'],
+        ['multi_gate1', 2560+280, '10I'],  # in ns
+        ['multi_tgcStart', 2560+320, '10i'],
         ['multi_tgcEnd', 2560+360, '10i'],
         ['multi_tgcMode', 2560+400, '10I'],  # 0: slope, 1: custom
         ['multi_burstLength', 2560+440, '10I'],
         ['multi_sensitivity', 2560+480, '10I'],
-        ['multi_emitN', 2560+520, '10I'],
+        ['multi_emitNprofile', 2560+520, '10I'],
         ['multi_veloScale', 2560+560, '10I'],
         ['multi_veloOffset', 2560+600, '10i'],
         ['multi_moduleScale', 2560+640, '10I'],
@@ -928,19 +1070,19 @@ class DOP2000(DOPBase):
 
     ### Measurement parameters
     _measBaseOffset = 13600
-    _measLength = ['length', 0, 'H']
+    _measLen = ['length', 0, 'H']
     _measParam = [
         # measurement blocks at offset 13600
         # negative offsets are measured from the end of the block
         ['data', 2, '{:d}b'],  # size dependent on operation parameters
         ['timeStamp', -12, 'I'],  # in us
         ['flowRate', -8, 'I'],  # in ml/min
-        ['triggerSequence', -4, 'B'],
+        ['triggerState', -4, 'B'],
         ['channel', -3, 'B'],
         ['length2', -2, 'H'],
         ]
     # calculate the length of the fixed part of every measurement block
-    _measFixedLen = struct.calcsize(_measLength[2])
+    _measFixedLen = struct.calcsize(_measLen[2])
     for param, offset, fmt in _measParam:
         if param != 'data':
             _measFixedLen += struct.calcsize(fmt)
@@ -960,32 +1102,96 @@ class DOP2000(DOPBase):
         16: ['energy', 'history']
         }
 
+    _emitPower = {0: 'low', 1: 'medium', 2: 'high'}
+    _tgcMode = {0: 'slope', 1: 'custom', 2: 'uniform'}
+    _sensitivity = {20: 'very low', 16: 'low', 12: 'medium',
+                    8: 'high', 4: 'very high'}
+    _bandwidth = {0: 50e3, 1: 100e3, 2: 150e3, 3: 200e3, 4: 250e3, 5: 300e3}
+
+
+    def _scanFile(self):
+        """ Scan the file and extract number of measurements and used channels
+        """
+        self._file.seek(0,2)
+        eof = self._file.tell()  # end of file
+
+        exhausted = False  # set True once file end is reached
+        measN = 0  # total number of measurements
+        measCh = np.zeros(10)  # measurements per channel
+        dataCh = np.zeros(10)  # data length per channel
+
+        measStart = self._measBaseOffset  # first block offset
+
+        # relevant parameter positions & format
+        _, offsetL, fmtL = self._measLen  # block length (at start of block)
+        _, offsetL2, fmtL2 = self._measParam[-1]  # length at end of block
+        _, offsetC, fmtC = self._measParam[-2]  # channel
+#        param, offsetT, fmtT = self._measProfParam[1]  # profile type
+
+        # scan file
+        while not exhausted:
+            measStart += offsetL
+            measLen = self._readParam('', measStart, fmtL, save=False)
+            measEnd = measStart + measLen
+
+            dataLen = measLen - self._measFixedLen
+
+            # check for end of file
+            if measEnd > eof:
+                # measurement exceeds file => stop iteration
+                exhausted = True
+                continue
+            elif measEnd == eof:
+                # last measurement
+                exhausted = True
+
+            # one more measurement
+            measN += 1
+
+            # check block consistency
+            measLen2 = self._readParam('', measEnd+offsetL2, fmtL2, save=False)
+            if measLen2 != measLen:
+                warn('Lengths in measurement {:d} do not match!'.format(measN))
+
+            # increment measurement count for current channel
+            ch = self._readParam('', measEnd+offsetC, fmtC, save=False)
+            measCh[ch-1] += 1
+            dataCh[ch-1] = dataLen
+
+            # next block
+            measStart = measEnd
+
+        channelUsed = np.where(measCh != 0)[0]+1
+
+        self.setParam('measN', measN)
+        self.setParam('channelUsed', channelUsed)
+        for ch in channelUsed:
+            preCh = self._prefixChannel(ch)
+            self.setParam(preCh + 'measN', int(measCh[ch-1]))
+            self.setParam(preCh + 'dataLen', int(dataCh[ch-1]))
+
 
     def _read(self):
         """ Read the data in the given BDD file
         """
+        self._scanFile()
+
         ### Read parameters at fixed positions
         for param, offset, fmt in self._fixedParam:
             self._readParam(param, offset, fmt)
 
         ### Read measurement blocks
         measStart = self._measBaseOffset  # first measurement start
-        eof = self._file.seek(0,2)  # end of file
 
-        meas = 1  # current measurement number
-        exhausted = False  # set True once file end is reached
-        while not exhausted:
+        for meas in range(1, self.getParam('measN')+1):
             preMeas = self._prefixMeas(meas)
 
             # read measurement length
-            param, offset, fmt = self._measLength
+            param, offset, fmt = self._measLen
             measStart += offset
-            measLen = self._readParam(preMeas+param, measStart, fmt)
+            measLen = self._readParam(preMeas+param, measStart, fmt,
+                                      save=self._saveMeas)
             measEnd = measStart + measLen
-
-            # check for end of file
-            if measEnd >= eof:
-                exhausted = True
 
             for param, offset, fmt in self._measParam:
                 if param == 'data':
@@ -998,53 +1204,178 @@ class DOP2000(DOPBase):
                 elif offset < 0:
                     offset += measEnd
 
-                value = self._readParam(preMeas+param, offset, fmt)
+                value = self._readParam(preMeas+param, offset, fmt,
+                                        save=self._saveMeas)
 
                 if param == 'channel':
-                    # store which measurement belongs to which channel
-                    self._chToMeas[value-1].append(meas)
+                    channel = value
+                elif param == 'timeStamp':
+                    timestamp = value
+                elif param == 'triggerState':
+                    triggerstate = value
+                elif param == 'data':
+                    data = value
 
-            meas += 1
+            preCh = self._prefixChannel(channel)
+
+            # prelocate time and triggerState arrays
+            if preCh + 'time' not in self:
+                measCh = self.getParam(preCh + 'measN')
+                dataLen = self.getParam(preCh + 'dataLen')
+                self.setParam(preCh + 'time', np.ones(measCh)*np.inf)
+                self.setParam(preCh + 'triggerState', np.empty(measCh))
+                self.setParam(preCh + 'data', np.empty((measCh,dataLen)))
+
+            # find current time index
+            ti = np.where(self.getParam(preCh+'time') == np.inf)[0][0]
+
+            # save data to correct array
+            self.getParam(preCh + 'time')[ti] = timestamp
+            self.getParam(preCh + 'triggerState')[ti] = triggerstate
+            self.getParam(preCh + 'data')[ti, :] = data
+
             measStart = measEnd
-        self.setParam('measN', meas-1)
 
 
     def _refine(self):
         """ Process data read from the BDD file
         """
-        ### process information block
+        # process information block
         for param in ['version', 'parameter', 'comment']:
-            val = self.getParam(param).decode(self._codec)
+            val = self.getParam(param).decode(self._codec,
+                                              errors=self._decode_errors)
             val = val.strip('\00\r\n')
             self.setParam(param, val)
 
-        ### process parameter block
-        chUsed = np.where(self.getParam('multi_channelUsed'))[0]+1
-        self.setParam('channelUsed', chUsed)
-
-        ### process multiplexer block
-        for k in list(self.keys()):
-            if not k.startswith('multi_'):
-                continue
-            param = k[6:]
-            data = self.getParam(k)
-            for i, d in enumerate(data):
-                preCh = self._prefixChannel(i+1)
-                self.setParam(preCh+param, d)
-
-        ### decode the profileType number into the respective profile types
-        # front channel
-        pT = self.getParam('profType')
-        if pT in self._profileTypeNames:
-            self.setParam('profTypeName', self._profileTypeNames[pT])
+        # measurement mode & parameter processing
+        if self.getParam('multi'):
+            self._mode = 'multi'
+            self._refine_multi()
+        elif self.getParam('udvf2d'):
+            self._mode = 'udvf2d'
+            self._refine_udvf2d()
+        elif self.getParam('udvf3d'):
+            self._mode = 'udvf3d'
+            self._refine_udvf3d()
         else:
+            self._mode = 'front'
+            self._refine_front()
+
+        # process measured profiles
+        # After 2**32-1 us the time-value (int32) overflows (returns to 0).
+        timeOverflow = 2**32-1  # in us (about 1.193 h)
+
+        for ch in self.getParam('channelUsed'):
+            preCh = self._prefixChannel(ch)
+
+            # correct time-overflow
+            timestamp = self.getParam(preCh + 'time')  # in us
+            timestamp[1:] += np.cumsum(np.ediff1d(timestamp) < 0)*timeOverflow
+            self.setParam(preCh + 'time', timestamp*1e-6)
+
+            # caluclate depth in mm from operation parameters
+            self.setParam(preCh + 'depth', self._calcDepth(ch))
+
+            # process measured data
+            profType = self.getProfileType(ch)
+            gateN = self.getParam(preCh + 'gateN')
+            data = self._popParam(preCh + 'data')
+
+            for i, pT in enumerate(profType):
+                prof = data[:, i*gateN:(i+1)*gateN]
+
+                if pT == 'velo':
+                    prof, vmax = self._calcVelo(prof, ch)
+                    self.setParam(preCh + 'veloMax', vmax)
+
+                if pT == 'echo':
+                    prof, emax = self._calcEcho(prof, ch)
+                    self.setParam(preCh + 'echoMax', emax)
+
+                self.setParam(preCh + pT, prof)
+
+
+    def _refine_front(self):
+        # front channel is treated as channel 1
+        preCh = self._prefixChannel(1)
+
+        # process parameter block
+        for k in list(self.keys()):
+            if k.startswith('multi_'):
+                param = k[6:]
+
+                if param == 'profN':
+                    data = 1
+                elif param == 'emitFreq':
+                    emitFreqOff = self.getParam('emitFreqOff')
+                    emitFreqNumber = int((emitFreqOff-1)/4+1)
+                    data = self.getParam(
+                        'emitFreq{:d}'.format(emitFreqNumber))
+                elif param == 'channelUsed':
+                    data = True
+                else:
+                    data = self.getParam(param)
+
+                self.setParam(preCh+param, data)
+
+        # decode the profileType number into the respective profile types
+        pT = self.getParam(preCh+'profType')
+        try:
+            self.setParam(preCh+'profTypeName', self._profileTypeNames[pT])
+        except:
             warn('Profile type {} is unknown'.format(pT))
             self.setParam('profTypeName', '')
 
-        # multiplexer channels
-        for ci in range(10):
-            ch = ci+1
+        # process specific parameter values
+        self._copyParam('emitPower', preCh + 'emitPower_file')
+        self.setParam(preCh + 'emitPower',
+                      self._emitPower[self.getParam('emitPower')])
+
+        self._copyParam('tgcMode', preCh + 'tgcMode_file')
+        self.setParam(preCh + 'tgcMode',
+                      self._tgcMode.get(self.getParam('tgcMode'), 'unknown'))
+
+        self._copyParam('bandwidth', preCh + 'bandwidth_file')
+        self.setParam(preCh + 'bandwidth',
+                      self._bandwidth[self.getParam('bandwidth')])
+
+        self._copyParam('sensitivity', preCh + 'sensitivity_file')
+        self.setParam(preCh + 'sensitivity',
+                      self._sensitivity[self.getParam('sensitivity')])
+
+        # bandwidth is not saved in file (or not documented)
+        self.setParam(preCh + 'samplingVolume', float('nan'))
+
+        self.setParam(preCh + 'soundSpeed', self.getParam('soundSpeed'))
+
+        fct_res = lambda x: x*1e-9 * \
+                            self.getParam(preCh+'soundSpeed')*.5e3
+        self._copyParam('resolution',
+                        preCh + 'resolution_file')
+        self.setParam(preCh + 'resolution',
+                      fct_res(self.getParam('resolution')))
+
+        self._copyParam('dopplerAngle', preCh + 'dopplerAngle_file')
+        self.setParam(preCh + 'dopplerAngle',
+                      self.getParam('dopplerAngle')*self.getParam('unit'))
+
+
+    def _refine_multi(self):
+        # process multiplexer block
+        for k in list(self.keys()):
+            if not k.startswith('multi_'):
+                continue
+
+            param = k[6:]
+            data = self.getParam(k)
+            for chi, val in enumerate(data):
+                preCh = self._prefixChannel(chi+1)
+                self.setParam(preCh+param, val)
+
+        for ch in range(1,11):
             preCh = self._prefixChannel(ch)
+
+            # decode the profileType number into the respective profile types
             pT = self.getParam(preCh+'profType')
 
             if pT in self._profileTypeNames:
@@ -1055,82 +1386,47 @@ class DOP2000(DOPBase):
                      'multiplexer-channel {} is unknown'.format(ch))
                 self.setParam(preCh+'profTypeName', '')
 
-        ### assemble measurement blocks into channels and process profiles
-        if self.getParam('multi'):
-            self._mode = 'multi'
-        elif self.getParam('udvf2d'):
-            self._mode = 'udvf2d'
-        elif self.getParam('udvf3d'):
-            self._mode = 'udvf3d'
-        else:
-            self._mode = 'default'
+            # process specific parameter values
+            self._copyParam(preCh + 'emitPower', preCh + 'emitPower_file')
+            self._modParam(preCh + 'emitPower',
+                           lambda x: self._emitPower[x])
 
-        for chInd, measList in enumerate(self._chToMeas):
-            if measList == []:
-                # no profiles recorded for this channel
-                continue
+            self._copyParam(preCh + 'tgcMode', preCh + 'tgcMode_file')
+            self._modParam(preCh + 'tgcMode', lambda x: self._tgcMode[x])
 
-            ch = chInd+1  # channel number
-            preCh = 'ch{:d}_'.format(ch)
-            gateN = self._getGateN(ch)
+            self._copyParam('bandwidth', preCh + 'bandwidth_file')
+            self.setParam(preCh + 'bandwidth',
+                          self._bandwidth[self.getParam('bandwidth')])
 
-            # number of profiles
-            if self._mode == 'multi':
-                profileTypeName = self.getParam(preCh+'profTypeName')
-                profileN = len(profileTypeName)
-            if self._mode == 'udvf2d':
-                profileN = 2
-                profileTypeName = ['velo']*profileN
-            if self._mode == 'udfv3d':
-                profileN = 3
-                profileTypeName = ['velo']*profileN
-            if self._mode == 'default':
-                profileTypeName = self.getParam('profTypeName')
-                profileN = len(profileTypeName)
+            self._copyParam(preCh + 'sensitivity',
+                            preCh + 'sensitivity_file')
+            self._modParam(preCh + 'sensitivity',
+                           lambda x: self._sensitivity[x])
 
-            # assemble profiles and informations
-            profile = np.zeros((profileN, len(measList), gateN))
-            flowRate = np.zeros(len(measList))
-            triggerSeq = np.zeros(len(measList))
-            time = np.zeros(len(measList))
+            # bandwidth is not saved in file (or not documented)
+            self.setParam(preCh + 'samplingVolume', float('nan'))
 
-            # After 2**32-1 us the time-value (int32) overflows (returns to 0).
-            timeOverflow = 2**32-1 # in us (about 1.193 h)
-            # This has to be corrected by an additional offset,
-            # that gets incremented each time an overflow happens.
-            timeOffset = 0
+            self.setParam(preCh + 'soundSpeed',
+                          self.getParam('soundSpeed'))
 
-            for i, meas in enumerate(measList):
-                preMeas = self._prefixMeas(meas)
+            fct_res = lambda x: x*1e-9 * \
+                                self.getParam(preCh+'soundSpeed')*.5e3
+            self._copyParam(preCh + 'resolution',
+                            preCh + 'resolution_file')
+            self._modParam(preCh + 'resolution', fct_res)
 
-                time[i] = self.getParam(preMeas+'timeStamp') + timeOffset
-                # detect and correct overflow of the time
-                if i > 0 and time[i]-time[i-1] < 0:
-                    time[i] += timeOverflow
-                    timeOffset += timeOverflow
+            self._copyParam(preCh + 'dopplerAngle',
+                            preCh + 'dopplerAngle_file')
+            self._modParam(preCh + 'dopplerAngle',
+                           lambda x: x*self.getParam(preCh + 'unit'))
 
-                prof = self.getParam(preMeas+'data')
-                profile[:,i,:] = np.reshape(prof, (profileN, gateN))
 
-                flowRate[i] = self.getParam(preMeas + 'flowRate')
-                triggerSeq[i] = self.getParam(preMeas + 'triggerSequence')
+    def _refine_udvf2d(self):
+        raise Exception('2D UDVF measurement not supported.')
 
-            self.setParam(preCh+'depth', self._calcGateDepth(ch))
-            self.setParam(preCh+'time', time*1e-6)
-            self.setParam(preCh+'flowRate', flowRate)
-            self.setParam(preCh+'triggerSeq', triggerSeq)
-            self.setParam(preCh+'profile', profile)
 
-            for i, pName in enumerate(profileTypeName):
-                pArray = profile[i,:,:]
-
-                if pName == 'velo':
-                    pArray, vmax = self._calcVelo(pArray, ch)
-                    self.setParam(preCh+'veloMax', vmax)
-                elif pName == 'echo':
-                    pArray = self._calcEcho(pArray, ch)
-
-                self.setParam(preCh+pName, pArray)
+    def _refine_udvf3d(self):
+        raise Exception('3D UDVF measurement not supported.')
 
 
     def _getGateN(self, channel):
@@ -1142,21 +1438,21 @@ class DOP2000(DOPBase):
             return self.getParam('gateN')
 
 
-    def _calcGateDepth(self, channel):
+    def _calcDepth(self, channel):
         """ Gate depths in mm for a given channel
         """
         if self._mode == 'multi':
             soundSpeed = self.getParam('soundSpeed')
-            timeRes = self.getParam('multi_timeRes')[channel-1]
-            timeGate1 = self.getParam('multi_timeGate1')[channel-1]
+            res = self.getParam('multi_resolution')[channel-1]
+            timeGate1 = self.getParam('multi_gate1')[channel-1]
             gateN = self.getParam('multi_gateN')[channel-1]
         else:
             soundSpeed = self.getParam('soundSpeed')
-            timeRes = self.getParam('timeRes')
-            timeGate1 = self.getParam('timeGate1')
+            res = self.getParam('resolution')
+            timeGate1 = self.getParam('gate1')
             gateN = self.getParam('gateN')
 
-        gateDepth = (np.arange(gateN)*timeRes+timeGate1)*1e-6*soundSpeed/2.
+        gateDepth = (np.arange(gateN)*res+timeGate1)*1e-6*soundSpeed/2.
 
         return gateDepth
 
@@ -1164,55 +1460,40 @@ class DOP2000(DOPBase):
     def _calcVelo(self, data, ch):
         """ Velocity and maximum velocity in m/s
         """
-        data = np.array(data)
+        preCh = self._prefixChannel(ch)
 
-        if self._mode == 'default':
-            veloOffset = self.getParam('veloOffset')
-            prfPeriod = self.getParam('prfPeriod')
-            veloScale = self.getParam('veloScale')
-            soundSpeed = self.getParam('soundSpeed')
-            emitFreqOff = self.getParam('emitFreqOff')
-            emitFreqNumber = int((emitFreqOff-1)/4+1)
-            emitFreq = self.getParam('emitFreq{:d}'.format(emitFreqNumber))
+        veloOffset = self.getParam(preCh + 'veloOffset')
+        prfPeriod = self.getParam(preCh + 'prf')
+        veloScale = self.getParam(preCh + 'veloScale')
+        soundSpeed = self.getParam(preCh + 'soundSpeed')
+        emitFreq = self.getParam(preCh + 'emitFreq')
 
-            if self.getParam('unit'):
-                angle = self.getParam('dopplerAngle')*np.pi/180.
-            else:
-                angle = 0
-
-        elif self._mode == 'multi':
-            chi = ch-1
-            veloOffset = self.getParam('multi_veloOffset')[chi]
-            prfPeriod = self.getParam('multi_prf')[chi]
-            veloScale = self.getParam('multi_veloScale')[chi]
-            soundSpeed = self.getParam('soundSpeed')
-            emitFreq = self.getParam('multi_emitFreq')[chi]
-
-            if self.getParam('multi_unit')[chi]:
-                angle = self.getParam('multi_dopplerAngle')[chi]*np.pi/180.
-            else:
-                angle = 0
+        angle = self.getParam(preCh + 'dopplerAngle')*np.pi/180.
 
         # correct offset
         data[data + veloOffset > 127] -= 256
         data[data + veloOffset < -128] += 256
 
-        def velocity(data):
-            # calculate doppler frequency
-            fdoppler = data*1e6 / (128*prfPeriod*veloScale)
-            # calculate velocity
-            velo = fdoppler*soundSpeed / (2e3*np.cos(angle)*emitFreq)
-            return velo
+        veloFactor = 1e6*soundSpeed / \
+                     (2e3*np.cos(angle)*emitFreq*128*prfPeriod*veloScale)
 
-        return velocity(data), velocity(128)
+        data *= veloFactor  # use inplace operation to save memory
+        vmax = 128 * veloFactor
+
+        return data, vmax
 
 
-    def _calcEcho(self, data, ch):
-        """ Echo amplitude from 0 to 255
+    def _calcEcho(self, data, channel):
+        """ Echo amplitude
         """
-        data = np.array(data)
+        data += (data<0)*256
 
-        return data+(data<0)*256
+        modSc = self.getChannelParam('moduleScale', channel)
+        # modSc->emax: 1->2048, 2->1024, 4->512, 8->256
+        emax = int(2**(11-np.log2(modSc)))  # echo maximum
+        data *= emax/255.
+
+        return data, emax
 
 
 
@@ -1246,11 +1527,11 @@ class DOP3000(DOPBase):
         ['emitEnable', 4*6, 'i'],  # 1 if True
         ['emitPower', 4*7, 'i'],  # 0 = Low, 1 = Medium, 2 = High
         ['burstLength', 4*8, 'i'],  #
-        ['gate1', 4*9, 'i'],  #
+        ['gate1', 4*9, 'i'],  # index
         ['resolution', 4*10, 'i'],  # (n+1)*0.166 ns
-        ['resolutionAuto', 4*11, 'i'],  #
+        ['resolutionAuto', 4*11, 'i'],  #1 if True
         ['gateNAuto', 4*12, 'i'],  # 1 if True
-        ['gateN', 4*13, 'i'],  # 1 if True
+        ['gateN', 4*13, 'i'],  #
         ['emitNprofile', 4*14, 'i'],  # emissions per profile
         ['veloScale', 4*15, 'i'],  # 0 to 3141
         ['wallFilterCoeff', 4*16, 'i'],  # in 1e-3
@@ -1261,8 +1542,8 @@ class DOP3000(DOPBase):
         ['moduleScale', 4*21, 'i'],  # 256 to 2048
         ['veloOffset', 4*22, 'i'],  #
         ['tgcMode', 4*23, 'i'],  # 0 = uniform, 1 = slope, 2 = auto, 3 = custom
-        ['tgcStart', 4*24, 'i'],  # 0 to 256
-        ['tgcEnd', 4*25, 'i'],  # 0 to 256
+        ['tgcStart', 4*24, 'i'],  # 0 to 255
+        ['tgcEnd', 4*25, 'i'],  # 0 to 255
         ['tgcGateSize', 4*26, 'i'],  # 0 = 0.666 ns, 1 = 1.333 ns
         ['bandwidth', 4*27, 'i'],  # 0 = 50 kHz, 1 = 100 kHz, ..., 5 = 300 kHz
         ['gainOverall', 4*28, 'i'],  # 0 = 0 dB, 1 = 6 dB, 2 = 14 dB, 3 = 20 dB
@@ -1401,7 +1682,7 @@ class DOP3000(DOPBase):
     ### Measurement parameter
     # Negative offsets are measured from the end of the measurement.
     # The following parameters receive the prefix 'meas<n>_' where <n> is the
-    # measurement number starting at 1 (see also _prefixMeas).
+    # measurement number starting at 1 (see also DOPBase._prefixMeas).
     _measBaseOffset = 31268
     _measLen = ['length', 0, 'H']
     _measInfoParam = [
@@ -1414,8 +1695,9 @@ class DOP3000(DOPBase):
         ['length2', -2, 'H']
         ]
     # The following parameters receive the prefix 'meas<n>_prof<m>_' where <n>
-    # is the measurement number starting at 1 (see also _prefixMeas) and <m>
-    # is the profile number starting at 1 (see also _prefixProfile).
+    # is the measurement number starting at 1 (see also DOPBase._prefixMeas)
+    # and <m> is the profile number starting at 1 (see also
+    # DOPBase._prefixProfile).
     _measProfParam = [
         ['length', 0, 'H'],  # in bytes
         ['type', 2, 'B'],
@@ -1463,6 +1745,12 @@ class DOP3000(DOPBase):
          30: 'h',
          }
 
+    _emitPower = {0: 'low', 1: 'medium', 2: 'high'}
+    _tgcMode = {0: 'uniform', 1: 'slope', 2: 'auto', 3: 'custom'}
+    _bandwidth = {0: 50e3, 1: 100e3, 2: 150e3, 3: 200e3, 4: 250e3, 5: 300e3}
+    _sensitivity = {20: 'very low', 12: 'low', 8: 'medium',
+                    4: 'high', 2: 'very high'}
+
 
     def _byteToBit(self, byteString):
         """ Convert a buffer of bytes to a bit representation
@@ -1475,6 +1763,69 @@ class DOP3000(DOPBase):
                 for i in range(8):
                     res += str((byte >> i) & 1)
         return res
+
+
+    def _scanFile(self):
+        """ Scan the file and extract number of measurements and used channels
+        """
+        self._file.seek(0,2)
+        eof = self._file.tell()  # end of file
+
+        exhausted = False  # set True once file end is reached
+        measN = 0  # total number of measurements
+        measCh = np.zeros(10, dtype=int)  # measurements per channel
+
+        measStart = self._measBaseOffset  # first block offset
+
+        # relevant parameter positions & format
+        _, offsetL, fmtL = self._measLen  # block length (at start of block)
+        _, offsetL2, fmtL2 = self._measInfoParam[-1]  # length at end of block
+        _, offsetC, fmtC = self._measInfoParam[-2]  # channel
+        param, offsetT, fmtT = self._measProfParam[1]  # profile type
+
+        # scan file
+        while not exhausted:
+            measStart += offsetL
+            measLen = self._readParam('', measStart, fmtL, save=False)
+            measEnd = measStart + measLen
+
+            # check for end of file
+            if measEnd > eof:
+                # measurement exceeds file => stop iteration
+                exhausted = True
+                continue
+            elif measEnd == eof:
+                # last measurement
+                exhausted = True
+
+            # one more measurement
+            measN += 1
+
+            # check block consistency
+            measLen2 = self._readParam('', measEnd+offsetL2, fmtL2, save=False)
+            if measLen2 != measLen:
+                warn('Lengths in measurement {:d} do not match!'.format(measN))
+
+            # check for first profile type
+            profStart = measStart + struct.calcsize(fmtL)
+            profType = self._readParam('', profStart+offsetT, fmtT, save=False)
+            profTypeName = self._profileTypeNames[profType]
+
+            # read channel & increment measurement count (except for depth)
+            if profTypeName != 'depth':
+                ch = self._readParam('', measEnd+offsetC, fmtC, save=False)
+                measCh[ch-1] += 1
+
+            # next block
+            measStart = measEnd
+
+        channelUsed = np.where(measCh != 0)[0]+1
+
+        self.setParam('measN', measN)
+        self.setParam('channelUsed', channelUsed)
+        for ch in channelUsed:
+            preCh = self._prefixChannel(ch)
+            self.setParam(preCh + 'measN', int(measCh[ch-1]))
 
 
     def _readMeas(self, meas, measStart):
@@ -1495,15 +1846,46 @@ class DOP3000(DOPBase):
         """
         preMeas = self._prefixMeas(meas)
 
-        # read profile length
+        # read measurement length
         param, offset, fmt = self._measLen
         measStart += offset
-        measLen = self._readParam(preMeas+param, measStart, fmt)
+        measLen = self._readParam(preMeas+param, measStart, fmt,
+                                  save=self._saveMeas)
         measEnd = measStart + measLen
 
+        # read measurement information
+        for param, offset, fmt in self._measInfoParam:
+            # set offset from end of measurement
+            offset += measEnd
+            value = self._readParam(preMeas+param, offset, fmt,
+                                    save=self._saveMeas)
+
+            # extract important information for next steps
+            if param == 'channel':
+                channel = value
+            elif param == 'timeStamp':
+                timestamp = value
+            elif param == 'triggerState':
+                triggerState = value
+
+        preCh = self._prefixChannel(channel)
+        measN = self.getParam(preCh + 'measN')  # number of measurements
+        gateN = self.getParam(preCh + 'gateN')  # number of gates
+
+        # prelocate arrays
+        if preCh + 'time' not in self:
+            self.setParam(preCh + 'time', np.ones(measN)*np.inf)
+            self.setParam(preCh + 'triggerState', np.empty(measN))
+            self.setParam(preCh + 'profTypeName', [])
+
+        # find current time index
+        ti = np.where(self.getParam(preCh+'time') == np.inf)[0][0]
+
+        # read profiles
         profile = 1  # current profile
-        profStart = measStart + struct.calcsize(fmt)
-        profLen = 1
+        profLen = 1  # current profile length
+        profStart = measStart + struct.calcsize(self._measLen[2])
+
         while profLen != 0:
             preProf = preMeas + self._prefixProfile(profile)
             profEnd = profStart
@@ -1511,7 +1893,8 @@ class DOP3000(DOPBase):
             # read profile length
             param, offset, fmt = self._measProfParam[0]
             profEnd += struct.calcsize(fmt)
-            profLen = self._readParam(preProf+param, profStart+offset, fmt)
+            profLen = self._readParam(preProf+param, profStart+offset, fmt,
+                                      save=self._saveMeas)
             if profLen == 0:
                 # no more profiles in this measurement
                 break
@@ -1519,35 +1902,41 @@ class DOP3000(DOPBase):
             # read profile type
             param, offset, fmt = self._measProfParam[1]
             profEnd += struct.calcsize(fmt)
-            profType = self._readParam(preProf+param, profStart+offset, fmt)
+            profType = self._readParam(preProf+param, profStart+offset, fmt,
+                                       save=self._saveMeas)
             profFmt = self._profileTypeFmt[profType]
-            self.setParam(preProf+'format', profFmt)
+            profName = self._profileTypeNames[profType]
+            if self._saveMeas:
+                self.setParam(preProf+'format', profFmt)
 
             # read profile data
             param, offset, fmt = self._measProfParam[2]
             fmt = fmt.format(length=profLen/struct.calcsize(profFmt),
                              fmt=profFmt)
             profEnd += struct.calcsize(fmt)
-            self._readParam(preProf+param, profStart+offset, fmt)
+            data = self._readParam(preProf+param, profStart+offset, fmt,
+                                   save=self._saveMeas)
+
+            if profName == 'depth':
+                # profile depth
+                self.setParam(preCh + 'depthFile', np.array(data))
+            else:
+                if preCh + profName not in self:
+                    # prelocate profile arrays
+                    self.setParam(preCh + profName, np.empty((measN, gateN)))
+                    self._modParam(preCh + 'profTypeName',
+                                   lambda x: x + [profName])
+                # ssave profile data
+                self.getParam(preCh + 'triggerState')[ti] = triggerState
+                self.getParam(preCh + 'time')[ti] = timestamp
+                self.getParam(preCh + profName)[ti,:] = data
 
             # next profile
             profile += 1
             profStart = profEnd
 
-        self.setParam(preMeas+'profN', profile-1) # number of profiles
-
-        # read measurement information
-        for param, offset, fmt in self._measInfoParam:
-            # set offset from end of measurement
-            offset += measEnd
-            value = self._readParam(preMeas+param, offset, fmt)
-
-            if param == 'channel':
-                # store which measurement belongs to which channel
-                self._chToMeas[value-1].append(meas)
-
-        if self.getParam(preMeas+'length') != self.getParam(preMeas+'length2'):
-            warn('Lengths in measurement {:d} do not match!'.format(meas))
+        if self._saveMeas:
+            self.setParam(preMeas+'profN', profile-1) # number of profiles
 
         return measEnd
 
@@ -1555,8 +1944,6 @@ class DOP3000(DOPBase):
     def _read(self):
         """ Read the data in the given BDD file
         """
-        self._file.seek(0,2)
-        eof = self._file.tell()  # end of file
 
         ### read parameters at fixed positions
         for param, offset, fmt in self._fixedParam:
@@ -1571,21 +1958,15 @@ class DOP3000(DOPBase):
                 self._readParam(preCh+param, baseOffset+offset, fmt)
 
         ### read measured profiles
-        measStart = self._measBaseOffset  # first block start
+        self._scanFile()  # find number of measurements
 
-        meas = 1  # current measurement number
-        exhausted = False  # set True once file end is reached
-        while not exhausted:
+        measStart = self._measBaseOffset  # first block start
+        for meas in range(1, self.getParam('measN')+1):
+            # read measurement
             measEnd = self._readMeas(meas, measStart)
 
-            # check for end of file
-            if measEnd >= eof:
-                exhausted = True
-
+            # next measurement
             measStart = measEnd
-            meas += 1
-
-        self.setParam('measN', meas-1)
 
 
     def _refine(self):
@@ -1593,86 +1974,78 @@ class DOP3000(DOPBase):
         """
         ### process information parameters
         for param in ['version', 'comment']:
-            val = self.getParam(param).decode(self._codec)
+            val = self.getParam(param).decode(self._codec,
+                                              errors=self._decode_errors)
             val = val.strip('\00\r\n')
             self.setParam(param, val)
 
-        channelUsed = []
-        ### assemble measurements for each channel
-        for chInd, measList in enumerate(self._chToMeas):
-            ch = chInd+1  # channel number
-            preCh = self._prefixChannel(ch)#
+        ### process measurement data
+        # After 2**32-1 ms/10 the time-value (int32) overflows (returns to 0).
+        timeOverflow = 2**32-1  # in ms/10 (about 4.97 days)
 
-            if len(measList) == 0:
-                # no profiles recorded for this channel
-                continue
-            else:
-                channelUsed.append(ch)
+        for ch in self.getChannels():
+            preCh = self._prefixChannel(ch)
 
-            # assemble profiles and informations
-            # After 2**32-1 us the time-value (int32) overflows (returns to 0).
-            timeOverflow = 2**32-1 # in us (about 1.193 h)
-            # This has to be corrected by an additional offset,
-            # that gets incremented each time an overflow occurs.
-            timeOffset = 0
+            # correct time-overflow & convert to seconds
+            timestamp = self.getParam(preCh + 'time')  # in ms/10
+            timestamp[1:] += np.cumsum(np.ediff1d(timestamp) < 0)*timeOverflow
+            self.setParam(preCh + 'time', timestamp*1e-4)
 
-            time = []
-            triggerState = []
-            depth = []
-            profName = []
-            profData = []
-            for i, meas in enumerate(measList):
+            # correct depth from file
+            self._modParam(preCh + 'depthFile', lambda d: d/10.)
 
-                preMeas = self._prefixMeas(meas)
+            # caluclate depth in mm from operation parameters
+            self.setParam(preCh + 'depthCalc', self._calcDepth(ch))
 
-                # assemble measurement specific information
-                profN = self.getParam(preMeas+'profN')
+            # caluclate velocity in m/s
+            if 'velo' in self.getProfileType(ch):
+                velo = self.getParam(preCh + 'velo')
+                velo, vmax = self._calcVelo(velo, ch)
+                self.setParam(preCh + 'velo', velo)
+                self.setParam(preCh + 'veloMax', vmax)
 
-                for profile in range(1,profN+1):
-                    preProf = preMeas + self._prefixProfile(profile)
-                    type_ = self.getParam(preProf+'type')
+            # caluclate echo
+            if 'echo' in self.getProfileType(ch):
+                echo = self.getParam(preCh + 'echo')
+                echo, emax = self._calcEcho(echo, ch)
+                self.setParam(preCh + 'echo', echo)
+                self.setParam(preCh + 'echoMax', emax)
 
-                    name = self._profileTypeNames[type_]
-                    self.setParam(preProf+'name', name)
+        ### process singular parameters
+        for ch in range(1,11,1):
+            preCh = self._prefixChannel(ch)
+            self._copyParam(preCh + 'veloScale', preCh + 'veloScale_file')
+            self._modParam(preCh + 'veloScale', lambda x: x/3141.)
 
-                    data = self.getParam(preProf+'data')
+            self._copyParam(preCh + 'sensitivity', preCh + 'sensitivity_file')
+            self._modParam(preCh + 'sensitivity',
+                           lambda x: self._sensitivity[x])
 
-                    if name == 'depth':
-                        depth = np.array(data)/10
-                    else:
-                        if len(profData) < profile:
-                            profData.append([data])
-                            profName.append(name)
-                        else:
-                            profData[profile-1].append(data)
+            self._copyParam(preCh + 'emitPower', preCh + 'emitPower_file')
+            self._modParam(preCh + 'emitPower', lambda x: self._emitPower[x])
 
-                        if profile == 1:
-                            triggerState.append(
-                                self.getParam(preMeas+'triggerState'))
-                            time.append(self.getParam(preMeas+'timeStamp') +
-                                        timeOffset)
-                            # detect and correct overflow of the time
-                            if len(time) > 1:
-                                if time[-1]-time[-2] < 0:
-                                    time[-1] += timeOverflow
-                                    timeOffset += timeOverflow
+            self._copyParam(preCh + 'tgcMode', preCh + 'tgcMode_file')
+            self._modParam(preCh + 'tgcMode', lambda x: self._tgcMode[x])
 
-            self.setParam(preCh+'depthFile', np.array(depth))
-            self.setParam(preCh+'depthCalc', self._calcDepth(ch))
-            self.setParam(preCh+'time', np.array(time)*1e-4)
-            self.setParam(preCh+'triggerState', np.array(triggerState))
-            self.setParam(preCh+'profTypeName', profName)
+            self._copyParam(preCh + 'bandwidth', preCh + 'bandwidth_file')
+            self._modParam(preCh + 'bandwidth', lambda x: self._bandwidth[x])
 
-            for ip, data in enumerate(profData):
-                name = profName[ip]
+            self._copyParam(preCh + 'tgcStart', preCh + 'tgcStart_file')
+            self._modParam(preCh + 'tgcStart',
+                           lambda x: (x-127.5) / 127.5 * 40)
 
-                if name == 'velo':
-                    data, vmax = self._calcVelo(data, ch)
-                    self.setParam(preCh+'veloMax', vmax)
+            self._copyParam(preCh + 'tgcEnd', preCh + 'tgcEnd_file')
+            self._modParam(preCh + 'tgcEnd',
+                           lambda x: (x-127.5) / 127.5 * 40)
 
-                self.setParam(preCh+name, np.array(data))
+            # maunal claims nanoseconds (S.70), but it seems to be microseconds
+            fct_res = lambda x: (x+1) * 0.166e-6 * \
+                                self.getParam(preCh+'soundSpeed')/2. * 1e3
+            self._copyParam(preCh + 'resolution', preCh + 'resolution_file')
+            self._modParam(preCh + 'resolution', fct_res)
 
-        self.setParam('channelUsed', channelUsed)
+            self.setParam(preCh + 'samplingVolume',
+                          self._calcSamplingVolume(ch))
 
 
     def _calcDepth(self, channel):
@@ -1729,6 +2102,38 @@ class DOP3000(DOPBase):
         return velocity(data), velocity(128)
 
 
+    def _calcEcho(self, data, channel):
+        """ Echo signal
+        """
+        emax = self.getChannelParam('moduleScale', channel)
+        data = np.array(data) * emax/255.
+
+        return data, emax
+
+
+    def _calcSamplingVolume(self, channel):
+        """ Sampling volume thickness in mm
+
+        This formula was reverse engineered and does not match the values of
+        the UDOP software exactly, is however within 0.1 mm precission.
+        """
+        sound = self.getChannelParam('soundSpeed', channel)
+        band = self.getChannelParam('bandwidth', channel)
+        burst = self.getChannelParam('burstLength', channel)
+        freq = self.getChannelParam('emitFreq', channel)
+
+        # thickness defined by bandwidth (why division by 8 is unknown)
+        svt0 = sound / (8*band)
+
+        # thickness defined by burst length
+        svt1 = sound * burst/(2*freq)
+
+        # the larger value is the one used
+        svt = max([svt0, svt1])
+
+        return svt
+
+
     def getDepth(self, channel=None, version='File'):
         """ Returns the gate depths for given channels in mm
 
@@ -1751,7 +2156,7 @@ class DOP3000(DOPBase):
 
 
 
-def DOP(fname):
+def DOP(fname, **kw):
     """ Reads a binary DOP-file (*.BDD)
 
     DOP2000 and DOP3000/3010-files are supported. The file may be a *.gz or
@@ -1761,6 +2166,16 @@ def DOP(fname):
     ==========
     fname: str
         Absolute or relative path to the file.
+
+    Keyword-Arguments:
+    ==================
+    saveMeas: bool
+        Save the raw data of the measurement blocks into the returned class
+        instance. Default: False
+    decode_errors: str
+        Error handling of ``UnicodeDecodeError`` during decoding of
+        strings. See documentation of the `errors` argument in
+        ``str.decode`` for all possible options. Default: ``'ignore'``
     """
     # open file
     if fname.endswith('.bz2'):
@@ -1776,9 +2191,9 @@ def DOP(fname):
 
     # process file version
     if version.startswith(b'BINWDOPV'):
-        return DOP2000(fname)
+        return DOP2000(fname, **kw)
     elif version.startswith(b'BINUDOPV'):
-        return DOP3000(fname)
+        return DOP3000(fname, **kw)
     else:
         raise Exception('BDD version {} '.format(repr(version)) +
                         'of file {} '.format(repr(fname)) + 'is unknown.')
