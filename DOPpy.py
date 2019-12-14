@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Classes for reading BDD-files of DOP 2000 and 3000/3010
 
-| Version: 2.02
-| Date: 2016-12-12
+| Version: 2.03
+| Date: 2017-02-10
 
 Usage
 =====
@@ -89,9 +89,14 @@ v2.02:
     * Added the option to plot custom horizontal and vertical lines in the
       ``DOPBase.replay`` method (see the Keyword-Argument section in the
       method's documentation).
+v2.03:
+    * Imports true division from __future__ to avoid incompatibilities
+      for use with Python 2.7 when dividing by integers.
+    * Corrected a typo in `keysChannel`.
 """
 
 
+from __future__ import division  # supports true division for Python 2.7
 
 import struct
 from warnings import warn
@@ -231,7 +236,7 @@ class DOPBase(object):
         res = []
         for ch in channel:
             preCh = self._prefixChannel(ch)
-            keys = self.keySearch(preCh)
+            keys = self.keysSearch(preCh)
             for k in keys:
                 k = k[len(preCh):]
                 if k not in res:

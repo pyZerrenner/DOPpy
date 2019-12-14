@@ -49,6 +49,10 @@ For both methods `channel` can be an integer or a list of integers. They raise a
 - Very old DOP2000 file versions might not be read correctly. The script was tested with file version `'BINWDOPV4.06.1'` .
 
 ## Changelog
+v2.03:
+- Imports true division from `__future__` to avoid incompatibilities for use with Python 2.7 when dividing by integers.
+- Corrected a typo in `keysChannel`.
+    
 v2.02:
 - Fixed Doppler angle in velocity calculation of `DOP3000` and added Doppler angle in velocity calculation of `DOP2000`.
 - Added `DOPBase.removeAliasing` to remove aliasing effects for smooth velocity data.
