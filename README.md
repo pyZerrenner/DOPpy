@@ -49,6 +49,9 @@ For both methods `channel` can be an integer or a list of integers. They raise a
 - Very old DOP2000 file versions might not be read correctly. The script was tested with file version `'BINWDOPV4.06.1'` .
 
 ## Changelog
+v2.04:
+- Corrected time-calculation for `DOP2000`.
+
 v2.03:
 - Imports true division from `__future__` to avoid incompatibilities for use with Python 2.7 when dividing by integers.
 - Corrected a typo in `keysChannel`.

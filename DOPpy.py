@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Classes for reading BDD-files of DOP 2000 and 3000/3010
 
-| Version: 2.03
-| Date: 2017-02-10
+| Version: 2.04
+| Date: 2017-02-14
 
 Usage
 =====
@@ -93,6 +93,8 @@ v2.03:
     * Imports true division from __future__ to avoid incompatibilities
       for use with Python 2.7 when dividing by integers.
     * Corrected a typo in `keysChannel`.
+v2.04:
+    * Corrected time-calculation for `DOP2000`.
 """
 
 
@@ -178,7 +180,7 @@ class DOPBase(object):
 
         # This method should define these channel-parameters for each used
         # channel (i.e. these have an additional prefix as defined in
-        # `DOPBase._prefixChannel`, e.g. 'ch1_profTypeMax'):
+        # `DOPBase._prefixChannel`, e.g. 'ch1_profType'):
         #   'profTypeName': List of profile names that were recorded
         #   'veloMax': Maximum velocity in m/s, velocity range is +/- veloMax
         #   'time': Time array in seconds
@@ -1004,6 +1006,7 @@ class DOP2000(DOPBase):
 
             meas += 1
             measStart = measEnd
+        self.setParam('measN', meas-1)
 
 
     def _refine(self):
@@ -1102,7 +1105,7 @@ class DOP2000(DOPBase):
 
                 time[i] = self.getParam(preMeas+'timeStamp') + timeOffset
                 # detect and correct overflow of the time
-                if i > 0 and time[i-1]-time[i] < 0:
+                if i > 0 and time[i]-time[i-1] < 0:
                     time[i] += timeOverflow
                     timeOffset += timeOverflow
 
@@ -1113,7 +1116,7 @@ class DOP2000(DOPBase):
                 triggerSeq[i] = self.getParam(preMeas + 'triggerSequence')
 
             self.setParam(preCh+'depth', self._calcGateDepth(ch))
-            self.setParam(preCh+'time', time*1e-9)
+            self.setParam(preCh+'time', time*1e-6)
             self.setParam(preCh+'flowRate', flowRate)
             self.setParam(preCh+'triggerSeq', triggerSeq)
             self.setParam(preCh+'profile', profile)
