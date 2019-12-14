@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Classes for reading BDD-files of DOP 2000 and 3000/3010
 
-| Version: 2.11
+| Version: 2.12-beta
 | Date: 2018-10-19
 
 Usage
@@ -124,6 +124,10 @@ v2.11:
       if they are called directly or are not redefined by a subclass.
     * Added the ability to replace parameter values from the file. See the
       `DOP` docstring for details.
+v2.12-beta1:
+    * The `DOPBase.printSettings` method now also prints parameters resulting
+      from the operation parameters (maximum velocity and depth). A spelling
+      error in the output was corrected.
 """
 
 
@@ -645,33 +649,40 @@ class DOPBase(object):
             tgc2 = self.getChannelParam('tgcEnd', channel)
             tgc = tgc + ' ({:.0f}, {:.0f})'.format(tgc1, tgc2)
 
-        # print values
-        print(('  US Frequency [Hz]:     {:'+align+'.0f}').format(
+        # print operation parameters
+        print(('  US Frequency [kHz]:      {:'+align+'.0f}').format(
               self.getChannelParam('emitFreq', channel)))
-        print(('  Burst length:          {:'+align+'.0f}').format(
+        print(('  Burst length:            {:'+align+'.0f}').format(
               self.getChannelParam('burstLength', channel)))
-        print(('  Emitting power:        {:'+align+'}').format(
+        print(('  Emitting power:          {:'+align+'}').format(
               self.getChannelParam('emitPower', channel)))
-        print(('  Tgc [dB]:              {:'+align+'s}').format(tgc))
-        print(('  PRF [us]:              {:'+align+'.0f}').format(
+        print(('  Tgc [dB]:                {:'+align+'s}').format(tgc))
+        print(('  PRF [us]:                {:'+align+'.0f}').format(
               self.getChannelParam('prf', channel)))
-        print(('  First gate depth [mm]: {:'+align+'.2f}').format(gate1))
-        print(('  Number of gates:       {:'+align+'.0f}').format(
+        print(('  First gate depth [mm]:   {:'+align+'.2f}').format(gate1))
+        print(('  Number of gates:         {:'+align+'.0f}').format(
               self.getChannelParam('gateN', channel)))
-        print(('  Resolution [mm]:       {:'+align+'.3f}').format(
+        print(('  Resolution [mm]:         {:'+align+'.3f}').format(
               self.getChannelParam('resolution', channel)))
-        print(('  Sampling volume [mm]:  {:'+align+'.3f}').format(
+        print(('  Sampling volume [mm]:    {:'+align+'.3f}').format(
               self.getChannelParam('samplingVolume', channel)))
-        print(('  Emission/profile:      {:'+align+'.0f}').format(
+        print(('  Emission/profile:        {:'+align+'.0f}').format(
               self.getChannelParam('emitNprofile', channel)))
-        print(('  Doppler angle:         {:'+align+'.0f}').format(
+        print(('  Doppler angle:           {:'+align+'.0f}').format(
               self.getChannelParam('dopplerAngle', channel)))
-        print(('  Sensitivity:           {:'+align+'s}').format(
+        print(('  Sensitivity:             {:'+align+'s}').format(
               self.getChannelParam('sensitivity', channel)))
-        print(('  Velocity scale factor: {:'+align+'.2f}').format(
+        print(('  Velocity scale factor:   {:'+align+'.2f}').format(
               self.getChannelParam('veloScale', channel)))
-        print(('  Sound speed [m/s]:     {:'+align+'.0f}').format(
+        print(('  Sound speed [m/s]:       {:'+align+'.0f}').format(
               self.getChannelParam('soundSpeed', channel)))
+
+        # print resulting parameters
+        print('\nResulting parameters:')
+        print(('  Maximum velocity [mm/s]: {:'+align+'.1f}').format(
+              self.getChannelParam('veloMax', channel)*1e3))
+        print(('  Maximum depth [mm]:      {:'+align+'.1f}').format(
+              self.getChannelParam('depthCalc', channel)[-1]))
 
 
     def contour(self, profile, channel=None, timerange=slice(None),
