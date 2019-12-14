@@ -49,6 +49,11 @@ For both methods `channel` can be an integer or a list of integers. They raise a
 - Very old DOP2000 file versions might not be read correctly. The script was tested with file version `'BINWDOPV4.06.1'` .
 
 ## Changelog
+v2.02:
+- Fixed Doppler angle in velocity calculation of `DOP3000` and added Doppler angle in velocity calculation of `DOP2000`.
+- Added `DOPBase.removeAliasing` to remove aliasing effects for smooth velocity data.
+- Added the option to plot custom horizontal and vertical lines in the `DOPBase.replay` method (see the Keyword-Argument section in the method's documentation).
+
 v2.01:
 - Removed aliasing from echo-profile.
 - Added `maxtimes` argument to `DOPBase.contour` to avoid RAM overflow.
