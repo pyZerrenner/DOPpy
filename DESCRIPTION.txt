@@ -1,0 +1,29 @@
+DOPpy
+======
+
+This python module reads binary .bdd files created by the DOP measurement system. 
+Supported are DOP2000 and DOP3000/3010.
+
+The code is Python 3, but should work in Python 2.
+
+Installation
+------------
+
+Fast install:
+
+::
+
+    pip install DOPpy  
+
+Example
+--------
+
+.. code:: python
+
+    from DOPpy import DOP
+
+    # read the file by giving its relative or absolute path
+    bdd = DOP('path/to/file.bdd')
+
+    # display the velocity field of channel 1 (if present)
+    bdd.contour('velo', 1)
