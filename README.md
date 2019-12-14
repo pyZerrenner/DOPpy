@@ -49,6 +49,13 @@ For both methods `channel` can be an integer or a list of integers. They raise a
 - Very old DOP2000 file versions might not be read correctly. The script was tested with file version `'BINWDOPV4.06.1'` .
 
 ## Changelog
+v2.10:
+- Optimized code for reading the BDD-files (for `DOP2000` and `DOP3000`), which is now less memory intensive. This allows larger files to be read faster and with less possibility of an `Memory Error`. The raw measurement data from the file are by default not saved any more. This behaviour can be changed by setting the `saveMeas` argument to `True` in the `DOP`-function.
+- Transformed certain parameters from their raw value to sensible ones used by the DOP-software. The raw parameter values are stored with an suffix `'_file'` to the parameter name. Examples: emitting power, TGC mode, sampling volume (`DOP3000` only), spatial filter bandwidth, sensitivity. 
+- Added the `DOPBase.printSettings` method to display important operation parameters used in the measurement.
+- Corrected axis labels in `DOPBase.contour` and `DOPBase.replay` and fixed handling of `timerange` and `depthrange` arguments  in `DOPBase.contour`.
+- When decoding the comment string any character that does not fit the used codec is now ignored. This behaviour can be changed with the `decode_errors` keyword-argument for the function `DOP`.
+      
 v2.04:
 - Corrected time-calculation for `DOP2000`.
 
