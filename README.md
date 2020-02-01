@@ -1,5 +1,5 @@
 # DOPpy
-Read binary files (.bdd) of DOP measurement devices
+Read binary files (.bdd) of DOP measurement devices.
 
 The DOP measurement device series by [Signal Processing](https://www.signal-processing.com/) implements the ultrasound Doppler velocimetry (UDV) measurement method to record velocity profiles in liquids. The measurement data can be saved in an ascii file (.ADD = ascii DOP data) or a binary file (.BDD = binary DOP data). While the ascii is human readable and relatively easy to import, it is generally larger than the binary format and does only contain the time, position and velocity information of the measurement. The binary format contains much more information (measurement parameters & settings) as well as having a more compact file-size. The downside is of course that the binary structure has to be decoded. The job of DOPpy is to read the binary data of a BDD-file and provide it for further analysis within a Python console or script. 
 
@@ -49,7 +49,7 @@ For both methods `channel` can be an integer or a list of integers. They raise a
 - Very old DOP2000 file versions might not be read correctly. The script was tested with file version `'BINWDOPV4.06.1'` .
 
 ## Changelog
-v2.12-beta:
+v2.12:
 - The `DOPBase.printSettings` method now also prints parameters resulting from the operation parameters (maximum velocity and depth). A spelling error in the output was corrected.
       
 v2.11:
