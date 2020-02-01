@@ -9,7 +9,7 @@ Currently only files of the DOP2000 and DOP3000/3010 systems are supported. DOP4
 DOPpy was written in Python 3.6 but should be compatible with Python 2.7. Required modules are `numpy` and `matplotlib`.
 
 ## Installation
-Just copy the the DOPpy.py file into the folder of your script or in any folder that is included in Python's PATH variable to access it from any script or a Python console.
+Just copy the the `DOPpy.py` file into the folder of your script or in any folder that is included in Python's PATH variable to access it from any script or a Python console.
 
 ## Usage
 This section is a quick overview of the features of DOPpy. For more information refer to the doc-strings of the respective functions.
