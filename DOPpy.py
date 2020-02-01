@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Classes for reading BDD-files of DOP 2000 and 3000/3010
+""" Classes for reading BDD-files of DOP 2000 and 3000/3010
 
-| Version: 2.12-beta
-| Date: 2018-10-19
+| Version: 2.12
+| Date: 2020-02-01
 
 Usage
 =====
