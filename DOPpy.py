@@ -124,7 +124,7 @@ v2.11:
       if they are called directly or are not redefined by a subclass.
     * Added the ability to replace parameter values from the file. See the
       `DOP` docstring for details.
-v2.12-beta1:
+v2.12:
     * The `DOPBase.printSettings` method now also prints parameters resulting
       from the operation parameters (maximum velocity and depth). A spelling
       error in the output was corrected.
