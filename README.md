@@ -41,7 +41,7 @@ For all these methods `channel` can be an integer or a list of integers. In the 
 ### Displaying Measurements
 While DOPpy is primarily designed to import the data into python a couple of functions for quick visualisation of the measured data are available:
 
-- `bdd.contour(profile, channel)` plots a color-coded contour-plot of the profile with type `profile` for the specified channel over time and depth. See `bdd.getChannels` and `bdd.getProfileType` for available channels and their profile types, respectively.
+- `DOPBase.imshow(profile, channel)` displays a color-plot of the profile with type `profile` for the specified channel over time and depth. See `bdd.getChannels` and `bdd.getProfileType` for available channels and their profile types, respectively.
 - `bdd.replay(profile, channel)` plots an animation of the profile-snapshots with type `profile` for the specified channel over the depth. See `bdd.getChannels` and `bdd.getProfileType` for available channels and their profile types, respectively.
 
 For both methods `channel` can be an integer or a list of integers. They raise an error if the data is not available for at least one requested channel.
@@ -52,6 +52,20 @@ For both methods `channel` can be an integer or a list of integers. They raise a
 - Very old DOP2000 file versions might not be read correctly. The script was tested with file version `'BINWDOPV4.06.1'` .
 
 ## Changelog
+v2.13:
+- Implements the new `DOPBase.imshow` method for visualisation of the
+  measured profiles over time and depth. It is the preferred method over
+  `DOPBase.contour` to display data on an equidistant time and depth grid
+  (faster, less memory intensive and no need for color levels).
+- Both `DOPBase.imshow` and `DOPBase.contour` show the channel number as
+  the axes title and the profile name (without units) as the colorbar
+  label.
+- If no velocity or echo is recorded, the respective maximum value is now
+  set to NaN (channel parameters `'veloMax'` and `'echoMax'`). This avoids
+  KeyError messages due to a missing data entry (e.g. in
+  `DOPBase.PrintSettings`).
+- Improved error messages if a missing parameter is requested.
+
 v2.12:
 - The `DOPBase.printSettings` method now also prints parameters resulting from the operation parameters (maximum velocity and depth). A spelling error in the output was corrected.
       

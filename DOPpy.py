@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """ Classes for reading BDD-files of DOP 2000 and 3000/3010
 
-| Version: 2.12
-| Date: 2020-02-01
+| Version: 2.13
+| Date: 2023-02-27
 
 Usage
 =====
@@ -56,10 +56,10 @@ Displaying Measurements
     For a quick visualisation of the measured data the following methods are
     available:
 
-    * ``DOPBase.contour(profile, channel)`` plots a color-coded contour-plot of
-      the profile with type `profile` for the specified channel over time and
-      depth. See `DOPBase.getChannels` and `DOPBase.getProfileType` for
-      available channels and their profile types, respectively.
+    * ``DOPBase.imshow(profile, channel)`` displays a color-plot of the profile
+      with type `profile` for the specified channel over time and depth. See
+      `DOPBase.getChannels` and `DOPBase.getProfileType` for available channels
+      and their profile types, respectively.
     * ``DOPBase.replay(profile, channel)`` plots an animation of the
       profile-snapshots with type `profile` for the specified channel over the
       depth. See `DOPBase.getChannels` and `DOPBase.getProfileType` for
@@ -128,6 +128,19 @@ v2.12:
     * The `DOPBase.printSettings` method now also prints parameters resulting
       from the operation parameters (maximum velocity and depth). A spelling
       error in the output was corrected.
+v2.13:
+    * Implements the new `DOPBase.imshow` method for visualisation of the
+      measured profiles over time and depth. It is the preferred method over
+      `DOPBase.contour` to display data on an equidistant time and depth grid
+      (faster, less memory intensive and no need for color levels).
+    * Both `DOPBase.imshow` and `DOPBase.contour` show the channel number as
+      the axes title and the profile name (without units) as the colorbar
+      label.
+    * If no velocity or echo is recorded, the respective maximum value is now
+      set to NaN (channel parameters `'veloMax'` and `'echoMax'`). This avoids
+      KeyError messages due to a missing data entry (e.g. in
+      `DOPBase.PrintSettings`).
+    * Improved error messages if a missing parameter is requested.
 """
 
 
@@ -208,14 +221,14 @@ class DOPBase(object):
         self._decode_errors = kw.pop('decode_errors', 'ignore')
 
         if self._fname.endswith('.bz2'):
-            self._file = bz2.BZ2File(self._fname, 'rb')
+            openfct = bz2.open
         elif self._fname.endswith('.gz'):
-            self._file = gzip.GzipFile(self._fname, 'rb')
+            openfct = gzip.open
         else:
-            self._file = open(self._fname, 'rb')
+            openfct = open
 
-        self._read()
-        self._file.close()
+        with openfct(self._fname, 'rb') as self._file:
+            self._read()
 
         self._refine()
 
@@ -251,6 +264,9 @@ class DOPBase(object):
         # `DOPBase._prefixChannel`, e.g. 'ch1_profType'):
         #   'profTypeName': List of profile names that were recorded
         #   'veloMax': Maximum velocity in m/s, velocity range is +/- veloMax
+        #              If no velocity was recorded, set to NaN
+        #   'echoMax': Maximum echo amplitude, echo range is 0 to veloMax
+        #              If no echo was recorded, set to NaN
         #   'time': Time array in seconds
         #   'depth': Gate depth array in millimeter
         #   'velo'/'echo'/...: All recorded profiles as named in 'profTypeName'
@@ -399,14 +415,31 @@ class DOPBase(object):
 
     def setParam(self, param, value):
         """ Set the value of a parameter
+
+        Arguments:
+        ==========
+        param: str
+            Name of a parameter. Existing parameters are overwritten,
+            non-existing parameters are created.
+        value: object
+            Any new value of the parameter.
         """
         self._values[param] = value
 
 
     def getParam(self, param):
         """ Returns the value of a parameter
+
+        Arguments:
+        ==========
+        param: str
+            Name of a parameter.
         """
-        return self._values[param]
+        try:
+            return self._values[param]
+        except KeyError:
+            raise KeyError('The parameter "{:s}" is '.format(param)
+                           + 'not available in this DOP file.')
 
 
     def _modParam(self, param, fct):
@@ -506,19 +539,28 @@ class DOPBase(object):
             Parameter name. Must be a channel-parameter.
         channel: int or list
             A channel number (1 to 10) or a list of channel numbers. If
-            ``None`` is given all available channels are used.
+            ``None`` is given, all available channels are used.
         """
         if channel is None:
             channel = self.getChannels()
 
         try:
-            value = []
-            for ch in channel:
+            try:
+                value = []
+                for ch in channel:
+                    preCh = self._prefixChannel(ch)
+                    value.append(self.getParam(preCh+param))
+
+            except TypeError:
+                # `channel` was not given as a list, assume an integer
+                ch = channel  # assign `ch` so that KeyError message works
                 preCh = self._prefixChannel(ch)
-                value.append(self.getParam(preCh+param))
-        except TypeError:
-            preCh = self._prefixChannel(channel)
-            value = self.getParam(preCh+param)
+                value = self.getParam(preCh+param)
+
+        except KeyError:
+            raise KeyError('The parameter "{:s}" is '.format(param)
+                           + 'not available for channel {:d} '.format(ch)
+                           + 'in this DOP file.')
 
         return value
 
@@ -685,9 +727,100 @@ class DOPBase(object):
               self.getChannelParam('depthCalc', channel)[-1]))
 
 
+    def imshow(self, profile, channel=None, timerange=slice(None),
+                depthrange=slice(None), **kw):
+        """ Show the colour plot of a measured profile over time and depth
+
+        This method can only display data that is evenly spaced in time and
+        space (i.e. depth).
+
+        Arguments:
+        ==========
+        profile: str
+            Profile type to be plotted.
+        channel: int or list
+            A channel number (1 to 10) or a list of channel numbers to be
+            plotted. If ``None``, all available cannels are taken.
+        timerange: slice
+            Slice of the time-array to be plotted. ``slice(None)`` uses the
+            whole available time range.
+        depthrange: slice
+            Slice of the depth-array to be plotted. ``slice(None)`` uses the
+            whole available depth range.
+
+        Keyword-Arguments:
+        ==================
+        All other keyword arguments are passed to the `pyplot.imshow` function.
+        If not specified explicitely, these keyword arguments are set to the
+        following default values:
+            * **extent** is set to the appropriate time and depth range
+            * **aspect** is set to ``'auto'``
+            * **origin** is set to ``'lower'`` (altering this value can flip
+              and falsify the depth axis)
+
+        Examples:
+        =========
+        Show the velocity profiles of all channels with a blue-white-red
+        colormap ranging from -0.02 to 0.02 m/s.
+
+        >>> bdd = DOP('filename.bdd')
+        >>> bdd.imshow('velo', cmap='RdBu_r', vmax=0.02, vmin=-0.02)
+
+        Show the echo profile of channel 2 for every third time step
+        >>> bdd.imshow('echo', 2, timerange=slice(None, None, 3))
+        """
+        if channel is None:
+            channel = self.getChannels()
+
+        if not isinstance(timerange, slice):
+            timerange = slice(*timerange)
+
+        if not isinstance(depthrange, slice):
+            depthrange = slice(*depthrange)
+
+        # number of channels
+        try:
+            chN = len(channel)
+        except:
+            # channel is no sequence (assume it is a scalar)
+            chN = 1
+            channel = [channel]
+
+        # initialise figure
+        fig, ax = plt.subplots(chN, 1, squeeze=False, sharex=True)
+        ax = ax[:,0]
+        ax[-1].set_xlabel('Time [s]')
+
+        # set default keyword values for imshow
+        kw['aspect'] = kw.pop('aspect', 'auto')
+        kw['origin'] = kw.pop('origin', 'lower')
+        setextent = 'extent' not in kw
+
+        # plot profile data for each channel
+        for ci, ch in enumerate(channel):
+            ax[ci].set_ylabel('Depth [mm]')
+            ax[ci].set_title('Channel {:d}'.format(ch))
+
+            if setextent:
+                time = self.getTime(ch)[timerange]
+                depth = self.getDepth(ch)[depthrange]
+                dT = time[1] - time[0]  # assume evenly spaced time steps
+                dD = depth[1] - depth[0]  # assume evenly spaced gate distances
+                kw['extent'] = (min(time)-dT/2., max(time)+dT/2.,
+                                min(depth)-dD/2., max(depth)+dD/2.)
+
+            profData = self.getChannelParam(profile, ch)
+            img = ax[ci].imshow(profData[timerange, depthrange].T, **kw)
+            plt.colorbar(img, ax=ax[ci], label=profile)
+
+
+
     def contour(self, profile, channel=None, timerange=slice(None),
                 depthrange=slice(None), maxtimes=1000, **kw):
         """ Show the contour plot of a profile over time and depth
+
+        Use this method for non-equidistant time- and depth-ranges. Otherwise,
+        the method `imshow` is preferred.
 
         Attention:
             Use this method only as a quick way to visualise the UDV-data.
@@ -751,6 +884,7 @@ class DOPBase(object):
 
         for ci, ch in enumerate(channel):
             ax[ci, 0].set_ylabel('Depth [mm]')
+            ax[ci, 0].set_title('Channel {:d}'.format(ch))
 
             X, Y = np.meshgrid(time[ci][timerange], depth[ci][depthrange])
             Z = data[ci][timerange, depthrange].T
@@ -767,7 +901,7 @@ class DOPBase(object):
                 cont = ax[ci, 0].contourf(X, Y, Z, **kw)
             else:
                 cont = ax[ci, 0].contourf(X, Y, Z, levelN, **kw)
-            plt.colorbar(cont, ax=ax[ci, 0])
+            plt.colorbar(cont, ax=ax[ci, 0], label=profile)
 
 
     def replay(self, profile, channel, start=0, end=-1, fps=None,
@@ -1342,10 +1476,14 @@ class DOP2000(DOPBase):
                 if pT == 'velo':
                     prof, vmax = self._calcVelo(prof, ch)
                     self.setParam(preCh + 'veloMax', vmax)
+                else:
+                    self.setParam(preCh + 'veloMax', np.NaN)
 
                 if pT == 'echo':
                     prof, emax = self._calcEcho(prof, ch)
                     self.setParam(preCh + 'echoMax', emax)
+                else:
+                    self.setParam(preCh + 'echoMax', np.NaN)
 
                 self.setParam(preCh + pT, prof)
 
@@ -2115,6 +2253,8 @@ class DOP3000(DOPBase):
                 velo, vmax = self._calcVelo(velo, ch)
                 self.setParam(preCh + 'velo', velo)
                 self.setParam(preCh + 'veloMax', vmax)
+            else:
+                self.setParam(preCh + 'veloMax', np.NaN)
 
             # caluclate echo
             if 'echo' in self.getProfileType(ch):
@@ -2122,6 +2262,8 @@ class DOP3000(DOPBase):
                 echo, emax = self._calcEcho(echo, ch)
                 self.setParam(preCh + 'echo', echo)
                 self.setParam(preCh + 'echoMax', emax)
+            else:
+                self.setParam(preCh + 'echoMax', np.NaN)
 
 
     def _calcDepth(self, channel):
