@@ -158,23 +158,8 @@ import matplotlib.pyplot as plt
 class DOPBase(object):
     """ Base class for DOP measurements
 
-    Subclasses need to implement the `_read` and `_refine` methods.
-
-    Custom format keys
-    ==================
-    For unpacking the binary data of the BDD-file, `_readParam` accepts
-    additional fomrat keys:
-
-    v: Verbose (1 byte)
-        Values are not unpacked. The format cannot be combined with other
-        formats from the struct module.
-    m: Machine code (1 bit)
-        Read exactly one bit. A preceeding integer is interpreted as the
-        buffer size in bytes. A following integer is interpreted as offset
-        in bits inside the buffer. Example: ``'4m10'`` reads 4 bytes and
-        extracts the 10th bit value. the value is returned as boolean.
-        The format cannot be combined with other formats from the struct
-        module.
+    Subclasses represent different structures of the BDD-file format and
+    need to implement the `_read` and `_refine` methods accordingly.
     """
     _codec = 'cp1252'  # file codec
 
@@ -368,8 +353,8 @@ class DOPBase(object):
         offset:
             Absolute offset from the start of the file.
         fmt: str
-            Data-format string of the parameter (see help(struct) and
-            help(DOP3000))
+            Data format string of the parameter (see the "Data format strings"
+            section below).
         save: bool
             Whether to automatically save the value under the parameter name.
 
@@ -377,6 +362,45 @@ class DOPBase(object):
         ========
         value:
             The value read from the file. Its type is determined by `fmt`.
+
+        Data format strings
+        ===================
+        For unpacking the binary data of the BDD-file, `_readParam` accepts
+        format strings as defined by the `struct` module (see ``help(struct)``
+        or https://docs.python.org/3/library/struct.html for more information).
+
+        Additionally, `_readParam` accepts two custom types of format strings:
+
+        v: Verbose (1 byte)
+            Reads literal binary data from the file without converting it. This
+            format cannot be combined with other format strings.
+
+            Example:
+
+            * ``'4v'`` reads four bytes of binary data.
+
+        m: Machine code (1 bit)
+            Reads single bits as boolean. A preceeding integer is interpreted
+            as the buffer size in bytes. Following characters give the position
+            of the relevant bits. A single bit is given as one integer. A range
+            of subsequent bits is given as `<start>:<end>:<step>` acting like
+            standard slicing for python sequences (including omitted and
+            negative values). The position is zero-indexed. This format cannot
+            be combined with other formats from the struct module.
+
+            Examples:
+
+            * ``'1m0'``, ``'m0'``, ``'1m'`` and ``'m'`` all read 1 byte and
+              extract the value of bit 0 (the first bit) as a single boolean
+              (``True`` or ``False``).
+            * ``'6m33'`` reads 6 bytes and extracts the value of bit 33.
+            * ``'4m25:30'`` reads 4 bytes and extracts the value of bit 25 to
+              bit 29 as a list of booleans (five elements in this case).
+            * ``'1m:5'`` reads 1 byte and extracts the values of bit 0 to 4.
+            * ``'2m9:'`` reads 2 bytes and extracts the values of all bits
+              after bit 9.
+            * ``'8m:-4:2'`` reads 8 bytes and extracts every second bit value,
+              starting with bit 0 and excluding the last four bits.
         """
         self._file.seek(offset)
 
@@ -391,21 +415,31 @@ class DOPBase(object):
             size = int(fmt[:-1])
             value = self._file.read(size)
         elif 'm' in fmt:
-            # special machine code format (read a single bit)
+            # special machine code format (read separate bits)
             ind = fmt.index('m')
             # buffer size in bytes
             if ind != 0:
                 size = int(fmt[:ind])
             else:
                 size = 1
-            # bit position inside buffer
+            # bit positions inside buffer
             if ind != len(fmt)-1:
-                pos = int(fmt[ind+1:])
+                if ':' in fmt:
+                    # read range of bits
+                    pos = fmt[ind+1:].split(':')
+                    pos = [int(p) if len(p)>0 else None for p in pos]
+                    pos = slice(*pos)
+                else:
+                    # read single bit
+                    pos = int(fmt[ind+1:])
             else:
                 pos = 0
 
             value = self._byteToBit(self._file.read(size))[pos]
-            value = bool(int(value))
+            if ':' in fmt:
+                value = [bool(int(val)) for val in value]  # list of booleans
+            else:
+                value = bool(int(value))  # scalar boolean
 
         if save:
             self.setParam(param, value)
@@ -1872,8 +1906,26 @@ class DOP3000(DOPBase):
         ['udv2d3dsim_prfAdapt', 4*110, 'i'],  #
         ['flowRateUnit', 4*111, 'i'],  # 0 = ml/min, 1 = ml/s, 2 = dl/s
         ['flowRateScale', 4*112, 'i'],  #
-        ['aliasAutorCorr1', 4*113, 'i'],  #
-        ['aliasAutorCorr2', 4*114, 'i'],  #
+        # ['aliasAutorCorr1', 4*113, 'i'],  #
+        ['aliasCrtl_enabled', 4*113, '4m0'],  #
+        ['aliasCrtl_desired', 4*113, '4m1'],  #
+        ['aliasCrtl_method', 4*113, '4m3'],  # 0 = PRF, 1 = jump
+        ['aliasCrtl_multPRF_apply', 4*113, '4m4'],  #
+        ['aliasCrtl_multPRF_refType', 4*113, '4m5'],  # 0 = moving avg, 1 = median
+        ['aliasCrtl_multPRF_veloFactor10', 4*113+1, 'b'],  # velo scale factor * 10
+        ['aliasCrtl_multPRF_refLen', 4*113+2, 'b'],  #
+        ['aliasCrtl_jump_apply', 4*113, '4m24'],  #
+        ['aliasCrtl_jump_len', 4*113, '4m25:30'],  #
+        # ['aliasAutorCorr2', 4*114, 'i'],  #
+        ['aliasCrtl_request_uncorrected', 4*114, '4m0'],  #
+        ['aliasCrtl_request_corrected', 4*114, '4m1'],  #
+        ['aliasCrtl_request_reference', 4*114, '4m2'],  #
+        ['aliasCrtl_display_uncorrected', 4*114, '4m3'],  #
+        ['aliasCrtl_display_corrected', 4*114, '4m4'],  #
+        ['aliasCrtl_display_reference', 4*114, '4m5'],  #
+        ['aliasCrtl_jump_refGate', 4*114, '4m6:16'],  #
+        ['aliasCrtl_jump_hysteresis', 4*114+2, 'b'],  # in percent
+        ['aliasCrtl_PRFveloFactor', 4*114, '4m24:28'],  #
         ['wallSoundSpeed', 4*115, 'i'],  #
         ['wallLength', 4*116, 'i'],  #
         ['couplantSoundSpeed', 4*117, 'i'],  #
@@ -1956,6 +2008,8 @@ class DOP3000(DOPBase):
     _bandwidth = {0: 50e3, 1: 100e3, 2: 150e3, 3: 200e3, 4: 250e3, 5: 300e3}
     _sensitivity = {20: 'very low', 12: 'low', 8: 'medium',
                     4: 'high', 2: 'very high'}
+    _aliasCrtl_method = {False: 'multi PRF', True: 'jump'}
+    _aliasCrtl_PRF_refType = {False: 'moving average', True: 'median'}
 
 
     def _scanFile(self):
@@ -2227,6 +2281,16 @@ class DOP3000(DOPBase):
                             preCh + 'aquisitionRate_file')
             self._modParam(preCh + 'aquisitionRate',
                            lambda x: x[x[0]+1]*1e3)
+
+            self._copyParam(preCh + 'aliasCrtl_method',
+                            preCh + 'aliasCrtl_method_file')
+            self._modParam(preCh + 'aliasCrtl_method',
+                           lambda x: self._aliasCrtl_method[x])
+
+            self._copyParam(preCh + 'aliasCrtl_PRF_refType',
+                            preCh + 'aliasCrtl_PRF_refType_file')
+            self._modParam(preCh + 'aliasCrtl_PRF_refType',
+                           lambda x: self._aliasCrtl_PRF_refType[x])
 
 
         ### process measurement data
