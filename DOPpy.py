@@ -413,6 +413,19 @@ class DOPBase(object):
         return value
 
 
+    def _byteToBit(self, byteString):
+        """ Convert a buffer of bytes to a bit representation
+        """
+        res = ''
+        if len(byteString) != 0:
+            for byte in byteString:
+                if not isinstance(byte, int):
+                    byte = ord(byte)
+                for i in range(8):
+                    res += str((byte >> i) & 1)
+        return res
+
+
     def setParam(self, param, value):
         """ Set the value of a parameter
 
@@ -1943,19 +1956,6 @@ class DOP3000(DOPBase):
     _bandwidth = {0: 50e3, 1: 100e3, 2: 150e3, 3: 200e3, 4: 250e3, 5: 300e3}
     _sensitivity = {20: 'very low', 12: 'low', 8: 'medium',
                     4: 'high', 2: 'very high'}
-
-
-    def _byteToBit(self, byteString):
-        """ Convert a buffer of bytes to a bit representation
-        """
-        res = ''
-        if len(byteString) != 0:
-            for byte in byteString:
-                if not isinstance(byte, int):
-                    byte = ord(byte)
-                for i in range(8):
-                    res += str((byte >> i) & 1)
-        return res
 
 
     def _scanFile(self):
