@@ -1849,7 +1849,7 @@ class DOP3000(DOPBase):
         ['multi_blockN', 4*53, 'i'],  #
         ['medianProfileN', 4*54, 'i'],  #
         ['echoMode', 4*55, 'i'],  #
-        ['-internal_6', 4*56, 'i'],  #
+        ['_internal_6', 4*56, 'i'],  #
         ['_internal_7', 4*57, 'i'],  #
         ['gateFftPointN', 4*58, 'i'],  #
         ['gateFftHaming', 4*59, 'i'],  #
@@ -1911,8 +1911,8 @@ class DOP3000(DOPBase):
         ['aliasCrtl_desired', 4*113, '4m1'],  #
         ['aliasCrtl_method', 4*113, '4m3'],  # 0 = PRF, 1 = jump
         ['aliasCrtl_multPRF_apply', 4*113, '4m4'],  #
-        ['aliasCrtl_multPRF_refType', 4*113, '4m5'],  # 0 = moving avg, 1 = median
-        ['aliasCrtl_multPRF_veloFactor10', 4*113+1, 'b'],  # velo scale factor * 10
+        ['aliasCrtl_multPRF_refType', 4*113, '4m5'],  # 0 = mov avg, 1 = median
+        ['aliasCrtl_multPRF_veloFactor10', 4*113+1, 'b'],  # velo factor * 10
         ['aliasCrtl_multPRF_refLen', 4*113+2, 'b'],  #
         ['aliasCrtl_jump_apply', 4*113, '4m24'],  #
         ['aliasCrtl_jump_len', 4*113, '4m25:30'],  #
@@ -2287,9 +2287,9 @@ class DOP3000(DOPBase):
             self._modParam(preCh + 'aliasCrtl_method',
                            lambda x: self._aliasCrtl_method[x])
 
-            self._copyParam(preCh + 'aliasCrtl_PRF_refType',
-                            preCh + 'aliasCrtl_PRF_refType_file')
-            self._modParam(preCh + 'aliasCrtl_PRF_refType',
+            self._copyParam(preCh + 'aliasCrtl_multPRF_refType',
+                            preCh + 'aliasCrtl_multPRF_refType_file')
+            self._modParam(preCh + 'aliasCrtl_multPRF_refType',
                            lambda x: self._aliasCrtl_PRF_refType[x])
 
 
